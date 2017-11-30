@@ -17,13 +17,13 @@
 %                                 July 1992                                   %
 %                                                                             %
 %                                                                             %
-%  Copyright 1999-2016 ImageMagick Studio LLC, a non-profit organization      %
+%  Copyright 1999-2017 ImageMagick Studio LLC, a non-profit organization      %
 %  dedicated to making software imaging solutions freely available.           %
 %                                                                             %
 %  You may not use this file except in compliance with the License.  You may  %
 %  obtain a copy of the License at                                            %
 %                                                                             %
-%    http://www.imagemagick.org/script/license.php                            %
+%    https://www.imagemagick.org/script/license.php                           %
 %                                                                             %
 %  Unless required by applicable law or agreed to in writing, software        %
 %  distributed under the License is distributed on an "AS IS" BASIS,          %
@@ -118,7 +118,7 @@ static MagickBooleanType IsTXT(const unsigned char *magick,const size_t length)
     return(MagickFalse);
   if (LocaleNCompare((const char *) magick,MagickID,strlen(MagickID)) != 0)
     return(MagickFalse);
-  count=(ssize_t) sscanf((const char *) magick+32,"%lu,%lu,%lu,%s",&columns,
+  count=(ssize_t) sscanf((const char *) magick+32,"%lu,%lu,%lu,%32s",&columns,
     &rows,&depth,colorspace);
   if (count != 4)
     return(MagickFalse);
@@ -440,12 +440,14 @@ static Image *ReadTXTImage(const ImageInfo *image_info,ExceptionInfo *exception)
     height=0;
     max_value=0;
     *colorspace='\0';
-    count=(ssize_t) sscanf(text+32,"%lu,%lu,%lu,%s",&width,&height,&max_value,
+    count=(ssize_t) sscanf(text+32,"%lu,%lu,%lu,%32s",&width,&height,&max_value,
       colorspace);
     if ((count != 4) || (width == 0) || (height == 0) || (max_value == 0))
       ThrowReaderException(CorruptImageError,"ImproperImageHeader");
     image->columns=width;
     image->rows=height;
+    if ((max_value == 0) || (max_value > 4294967295UL))
+      ThrowReaderException(CorruptImageError,"ImproperImageHeader");
     for (depth=1; (GetQuantumRange(depth)+1) < max_value; depth++) ;
     image->depth=depth;
     status=SetImageExtent(image,image->columns,image->rows,exception);
@@ -793,8 +795,7 @@ static MagickBooleanType WriteTXTImage(const ImageInfo *image_info,Image *image,
         (void) WriteBlobString(image,buffer);
         (void) CopyMagickString(tuple,"(",MagickPathExtent);
         if (pixel.colorspace == GRAYColorspace)
-          ConcatenateColorComponent(&pixel,GrayPixelChannel,compliance,
-            tuple);
+          ConcatenateColorComponent(&pixel,GrayPixelChannel,compliance,tuple);
         else
           {
             ConcatenateColorComponent(&pixel,RedPixelChannel,compliance,tuple);

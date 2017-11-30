@@ -18,13 +18,13 @@
 %                                December 1996                                %
 %                                                                             %
 %                                                                             %
-%  Copyright 1999-2016 ImageMagick Studio LLC, a non-profit organization      %
+%  Copyright 1999-2017 ImageMagick Studio LLC, a non-profit organization      %
 %  dedicated to making software imaging solutions freely available.           %
 %                                                                             %
 %  You may not use this file except in compliance with the License.  You may  %
 %  obtain a copy of the License at                                            %
 %                                                                             %
-%    http://www.imagemagick.org/script/license.php                            %
+%    https://www.imagemagick.org/script/license.php                           %
 %                                                                             %
 %  Unless required by applicable law or agreed to in writing, software        %
 %  distributed under the License is distributed on an "AS IS" BASIS,          %
@@ -53,6 +53,7 @@
 #include "MagickCore/exception-private.h"
 #include "MagickCore/image-private.h"
 #include "MagickCore/memory_.h"
+#include "MagickCore/memory-private.h"
 #include "MagickCore/monitor.h"
 #include "MagickCore/monitor-private.h"
 #include "MagickCore/nt-base.h"
@@ -375,9 +376,7 @@ MagickExport MagickBooleanType NTAcquireTypeCache(SplayTreeInfo *type_cache,
           continue;
         *pos='\0'; /* Remove (TrueType) from string */
 
-        type_info=(TypeInfo *) AcquireMagickMemory(sizeof(*type_info));
-        if (type_info == (TypeInfo *) NULL)
-          ThrowFatalException(ResourceLimitFatalError,"MemoryAllocationFailed");
+        type_info=(TypeInfo *) AcquireCriticalMemory(sizeof(*type_info));
         (void) ResetMagickMemory(type_info,0,sizeof(TypeInfo));
 
         type_info->path=ConstantString("Windows Fonts");

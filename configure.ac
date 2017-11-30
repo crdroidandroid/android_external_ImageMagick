@@ -1,10 +1,10 @@
-#  Copyright 1999-2016 ImageMagick Studio LLC, a non-profit organization
+#  Copyright 1999-2017 ImageMagick Studio LLC, a non-profit organization
 #  dedicated to making software imaging solutions freely available.
 #
 #  You may not use this file except in compliance with the License.  You may
 #  obtain a copy of the License at
 #
-#    http://www.imagemagick.org/script/license.php
+#    https://www.imagemagick.org/script/license.php
 #
 #  Unless required by applicable law or agreed to in writing, software
 #  distributed under the License is distributed on an "AS IS" BASIS,
@@ -26,11 +26,11 @@ AC_PREREQ(2.69)
 # ==============================================================================
 m4_define([magick_major_version], [7])
 m4_define([magick_minor_version], [0])
-m4_define([magick_micro_version], [2])
-m4_define([magick_patchlevel_version], [5])
+m4_define([magick_micro_version], [7])
+m4_define([magick_patchlevel_version], [12])
 m4_define([magick_version],
           [magick_major_version.magick_minor_version.magick_micro_version-magick_patchlevel_version])
-m4_define([magick_git_revision], esyscmd([sh -c "(gitversion .) | tr -d '\n'"]))
+m4_define([magick_git_revision], esyscmd([sh -c "(gitversion.sh .) | tr -d '\n'"]))
 m4_define([magick_tar_name],[ImageMagick])
 
 # ==============================================================================
@@ -40,7 +40,7 @@ AC_INIT([ImageMagick],
         [magick_version],
         [https://github.com/ImageMagick/ImageMagick/issues],
         [magick_tar_name],
-        [http://www.imagemagick.org])
+        [https://www.imagemagick.org])
 AC_CONFIG_SRCDIR([MagickCore/MagickCore.h])
 AC_CONFIG_AUX_DIR([config])
 AC_REQUIRE_AUX_FILE([tap-driver.sh])
@@ -356,12 +356,14 @@ case "${host_os}" in
     mingw* )
         native_win32_build='yes'
         GDI32_LIBS='-lgdi32'
+        OLE_LIBS='-loleaut32'
     ;;
 esac
 if test "${GDI32_LIBS}x" != 'x'; then
     AC_DEFINE(WINGDI32_DELEGATE,1,Define to use the Windows GDI32 library)
 fi
 AC_SUBST(GDI32_LIBS)
+AC_SUBST(OLE_LIBS)
 AM_CONDITIONAL(WINGDI32_DELEGATE, test "${GDI32_LIBS}x" != 'x' )
 AM_CONDITIONAL(WIN32_NATIVE_BUILD, test "${native_win32_build}" = 'yes' )
 AM_CONDITIONAL(CYGWIN_BUILD, test "${cygwin_build}" = 'yes' )
@@ -769,12 +771,13 @@ AC_ARG_WITH([method-prefix],
 
 if test "$with_method_prefix" != 'no'; then
     AC_DEFINE_UNQUOTED(NAMESPACE_PREFIX,$with_method_prefix,[Magick API method prefix])
+    AC_DEFINE_UNQUOTED(NAMESPACE_PREFIX_TAG,["$with_method_prefix"],[Magick API method prefix tag])
     DISTCHECK_CONFIG_FLAGS="${DISTCHECK_CONFIG_FLAGS} --with-method-prefix "
 fi
 
 # Enable legacy support (default no)
 AC_ARG_ENABLE(legacy-support,
-              [  --enable-legacy-support  install legacy command-line utilities (default disabled)],
+              [  --enable-legacy-support install legacy command-line utilities (default disabled)],
               [with_legacy_support=$enableval],
               [with_legacy_support='no'])
 AM_CONDITIONAL(LEGACY_SUPPORT, test "$with_legacy_support" != 'no')
@@ -1216,7 +1219,7 @@ AC_SEARCH_LIBS(socket, socket,
   MAGICK_FEATURES="DPC $MAGICK_FEATURES"
 ])
 
-AC_CHECK_FUNCS([acosh _aligned_malloc asinh atanh atoll atexit cabs carg cimag creal clock ctime_r directio erf _exit execvp fchmod floor fork ftime ftruncate getc_unlocked getcwd getpid getexecname getdtablesize getpagesize getrlimit getrusage gettimeofday gmtime_r isnan j0 j1 lltostr localtime_r lstat memmove memset mkstemp munmap nanosleep newlocale _NSGetExecutablePath pclose _pclose poll popen _popen posix_fadvise posix_fallocate posix_madvise posix_memalign posix_spawnp pow pread pwrite qsort_r raise rand_r readlink readdir_r realpath select seekdir sendfile setlocale socket sqrt setvbuf stat strchr strrchr strcspn strdup strpbrk strspn strstr strtod strtod_l strtol strtoul symlink sysconf sigemptyset sigaction spawnvp strerror strlcat strlcpy strcasecmp strncasecmp telldir tempnam times ulltostr uselocale usleep utime vfprintf vfprintf_l vsprintf vsnprintf vsnprintf_l waitpid _wfopen _wstat])
+AC_CHECK_FUNCS([acosh _aligned_malloc asinh atanh atoll atexit cabs carg cimag creal clock clock_getres clock_gettime ctime_r directio erf _exit execvp fchmod floor fork ftime ftruncate getc_unlocked getcwd getpid getexecname getdtablesize getpagesize getrlimit getrusage gettimeofday gmtime_r isnan j0 j1 lltostr localtime_r lstat memmove memset mkstemp munmap nanosleep newlocale _NSGetExecutablePath pclose _pclose poll popen _popen posix_fadvise posix_fallocate posix_madvise posix_memalign posix_spawnp pow pread pwrite qsort_r raise rand_r readlink realpath select seekdir sendfile setlocale socket sqrt setvbuf stat strchr strrchr strcspn strdup strpbrk strspn strstr strtod strtod_l strtol strtoul symlink sysconf sigemptyset sigaction spawnvp strerror strlcat strlcpy strcasecmp strncasecmp telldir tempnam times ulltostr uselocale usleep utime vfprintf vfprintf_l vsprintf vsnprintf vsnprintf_l waitpid _wfopen _wstat])
 
 #
 # Check for clock_gettime().
@@ -1407,6 +1410,12 @@ if test "$enable_openmp" != 'no'; then
     if test "x$GOMP_LIBS" = x ; then
       if $CC --version 2>&1 | grep Open64 > /dev/null ; then
         AC_CHECK_LIB(openmp,omp_get_num_procs,GOMP_LIBS="-lopenmp",,)
+      fi
+    fi
+    # Clang (passes for GCC but uses different OpenMP implementation)
+    if test "x$LIB_OMP" = x ; then
+      if $CC --version 2>&1 | grep clang > /dev/null ; then
+        AC_CHECK_LIB(omp,GOMP_parallel_start,LIB_OMP="-lomp",,)
       fi
     fi
     # GCC
@@ -1665,6 +1674,7 @@ fi
 if test "$have_zlib" = 'yes'; then
   AC_DEFINE(ZLIB_DELEGATE,1,Define if you have ZLIB library)
   CFLAGS="$ZLIB_CFLAGS $CFLAGS"
+  LIBS="$ZLIB_LIBS $LIBS"
 fi
 
 AM_CONDITIONAL(ZLIB_DELEGATE, test "$have_zlib" = 'yes')
@@ -1677,7 +1687,7 @@ dnl ===========================================================================
 with_ltdl='yes'
 have_ltdl='no'
 LTDL_LIBS=''
-if test "$build_modules" != 'no' ; then
+if test "$build_modules" != 'no' || test "X$ax_cv_check_cl_libcl" != Xno; then
   AC_MSG_RESULT([-------------------------------------------------------------])
   AC_MSG_CHECKING([for libltdl])
   AC_MSG_RESULT([])
@@ -1693,7 +1703,7 @@ if test "$build_modules" != 'no' ; then
     else
       LTDL_LIBS='-lltdl'
       LIBS="$LTDL_LIBS $LIBS"
-      AC_DEFINE(LTDL_DELEGATE,1,[Define if using libltdl to support dynamically loadable modules])
+      AC_DEFINE(LTDL_DELEGATE,1,[Define if using libltdl to support dynamically loadable modules and OpenCL])
       AC_MSG_RESULT([yes])
       have_ltdl='yes'
     fi
@@ -1701,7 +1711,7 @@ if test "$build_modules" != 'no' ; then
     AC_MSG_RESULT([no])
   fi
   if test "$have_ltdl" != 'yes' ; then
-    AC_MSG_FAILURE([libltdl is required for modules build],[1])
+    AC_MSG_FAILURE([libltdl is required for modules and OpenCL builds],[1])
   fi
 fi
 AM_CONDITIONAL(WITH_LTDL, test "$have_ltdl" != 'no')
@@ -2233,9 +2243,42 @@ AC_SUBST(GVC_LIBS)
 dnl ===========================================================================
 
 #
+# Check for the HEIC delegate library.
+#
+AC_ARG_WITH([heic],
+    [AC_HELP_STRING([--without-heic],
+                    [disable HEIC support])],
+    [with_heic=$withval],
+    [with_heic='yes'])
+
+if test "$with_heic" != 'yes'; then
+    DISTCHECK_CONFIG_FLAGS="${DISTCHECK_CONFIG_FLAGS} --with-heic=$with_heic "
+fi
+
+have_heic='no'
+HEIC_CFLAGS=""
+HEIC_LIBS=""
+HEIC_PKG=""
+if test "x$with_heic" = "xyes"; then
+  AC_MSG_RESULT([-------------------------------------------------------------])
+  PKG_CHECK_MODULES(HEIC,[libde265], have_heic=yes, have_heic=no)
+  AC_MSG_RESULT([])
+fi
+
+if test "$have_heic" = 'yes'; then
+  AC_DEFINE(HEIC_DELEGATE,1,Define if you have HEIC library)
+  CFLAGS="$HEIC_CFLAGS $CFLAGS"
+fi
+
+AM_CONDITIONAL(HEIC_DELEGATE, test "$have_heic" = 'yes')
+AC_SUBST(HEIC_CFLAGS)
+AC_SUBST(HEIC_LIBS)
+
+dnl ===========================================================================
+
+#
 # Check for JBIG delegate library.
 #
-
 AC_ARG_WITH([jbig],
     [AC_HELP_STRING([--without-jbig],
                     [disable JBIG support])],
@@ -2588,6 +2631,40 @@ AC_SUBST(PNG_LIBS)
 dnl ===========================================================================
 
 #
+# Check for the Raw delegate library.
+#
+AC_ARG_WITH([raw],
+    [AC_HELP_STRING([--without-raw],
+                    [disable Raw support])],
+    [with_raw=$withval],
+    [with_raw='yes'])
+
+if test "$with_raw" != 'yes'; then
+    DISTCHECK_CONFIG_FLAGS="${DISTCHECK_CONFIG_FLAGS} --with-libraw=$with_raw "
+fi
+
+have_raw='no'
+RAW_R_CFLAGS=""
+RAW_R_LIBS=""
+RAW_R_PKG=""
+if test "x$with_raw" = "xyes"; then
+  AC_MSG_RESULT([-------------------------------------------------------------])
+  PKG_CHECK_MODULES(RAW_R,[libraw_r >= 0.14.8], have_raw=yes, have_raw=no)
+  AC_MSG_RESULT([])
+fi
+
+if test "$have_raw" = 'yes'; then
+  AC_DEFINE(RAW_R_DELEGATE,1,Define if you have LIBRAW library)
+  CFLAGS="$RAW_R_CFLAGS $CFLAGS"
+fi
+
+AM_CONDITIONAL(RAW_R_DELEGATE, test "$have_raw" = 'yes')
+AC_SUBST(RAW_R_CFLAGS)
+AC_SUBST(RAW_R_LIBS)
+
+dnl ===========================================================================
+
+#
 # Check for RSVG delegate library.
 #
 AC_ARG_WITH([rsvg],
@@ -2682,12 +2759,25 @@ fi
 AM_CONDITIONAL(TIFF_DELEGATE, test "$have_tiff" = 'yes')
 AC_SUBST(TIFF_LIBS)
 
+#
+# Set URW Base35 font directory.
+#
+AC_ARG_WITH([urw-base35-font-dir],
+    [AC_HELP_STRING([--with-urw-base35-font-dir=DIR],
+                    [URW-base35 font directory])],
+    [with_urw_base35_font_dir=$withval],
+    [with_urw_base35_font_dir='default'])
+
+if test "$with_urw_base35_font_dir" != 'default'; then
+    DISTCHECK_CONFIG_FLAGS="${DISTCHECK_CONFIG_FLAGS} --with-urw-base35-font-dir=$with_urw_base35_font_dir "
+fi
+
 dnl ===========================================================================
 
 #
-# Check for WEBP delegate library.
+# Check for the WEBP delegate library.
 #
-AC_ARG_WITH(webp,
+AC_ARG_WITH([webp],
     [AC_HELP_STRING([--without-webp],
                     [disable WEBP support])],
     [with_webp=$withval],
@@ -2698,32 +2788,35 @@ if test "$with_webp" != 'yes'; then
 fi
 
 have_webp='no'
-WEBP_LIBS=''
-if test "$with_webp" != 'no'; then
-    AC_MSG_RESULT([-------------------------------------------------------------])
-    AC_MSG_CHECKING([for WEBP])
-    AC_MSG_RESULT([])
-    failed=0
-    passed=0
-    AC_CHECK_HEADER(webp/decode.h,passed=`expr $passed + 1`,failed=`expr $failed + 1`,)
-    AC_CHECK_LIB(webp,WebPPictureInitInternal,passed=`expr $passed + 1`,failed=`expr $failed + 1`,)
-    AC_MSG_CHECKING([if WEBP package is complete])
-    if test $passed -gt 0; then
-        if test $failed -gt 0; then
-            AC_MSG_RESULT([no -- some components failed test])
-            have_webp='no (failed tests)'
-        else
-            WEBP_LIBS='-lwebp'
-            LIBS="$WEBP_LIBS $LIBS"
-            AC_DEFINE(WEBP_DELEGATE,1,Define if you have WEBP library)
-            AC_MSG_RESULT([yes])
-            have_webp='yes'
-        fi
-    else
-        AC_MSG_RESULT([no])
-    fi
+have_webpmux='no'
+WEBP_CFLAGS=""
+WEBP_LIBS=""
+WEBP_PKG=""
+WEBPMUX_CFLAGS=""
+WEBPMUX_LIBS=""
+WEBPMUX_PKG=""
+if test "x$with_webp" = "xyes"; then
+  AC_MSG_RESULT([-------------------------------------------------------------])
+  PKG_CHECK_MODULES(WEBP,[libwebp], have_webp=yes, have_webp=no)
+  PKG_CHECK_MODULES(WEBPMUX,[libwebpmux], have_webpmux=yes, have_webpmux=no)
+  AC_MSG_RESULT([])
 fi
-AM_CONDITIONAL(WEBP_DELEGATE,test "$have_webp" = 'yes')
+
+if test "$have_webp" = 'yes'; then
+  AC_DEFINE(WEBP_DELEGATE,1,Define if you have WEBP library)
+  CFLAGS="$WEBP_CFLAGS $CFLAGS"
+fi
+
+if test "$have_webpmux" = 'yes'; then
+  AC_DEFINE(WEBPMUX_DELEGATE,1,Define if you have WEBPMUX library)
+  CFLAGS="$WEBPMUX_CFLAGS $CFLAGS"
+fi
+
+AM_CONDITIONAL(WEBP_DELEGATE, test "$have_webp" = 'yes')
+AM_CONDITIONAL(WEBPMUX_DELEGATE, test "$have_webpmux" = 'yes')
+AC_SUBST(WEBPMUX_CFLAGS)
+AC_SUBST(WEBPMUX_LIBS)
+AC_SUBST(WEBP_CFLAGS)
 AC_SUBST(WEBP_LIBS)
 
 dnl ===========================================================================
@@ -3045,6 +3138,7 @@ ILBMDecodeDelegateDefault='ilbmtoppm'
 ILBMEncodeDelegateDefault='ppmtoilbm'
 JXRDecodeDelegateDefault='JxrDecApp'
 JXREncodeDelegateDefault='JxrEncApp'
+LEPDelegateDefault='lepton'
 LPDelegateDefault='lp'
 LPRDelegateDefault='lpr'
 LaunchDelegateDefault='gimp'
@@ -3087,6 +3181,7 @@ AC_PATH_PROG(ILBMDecodeDelegate, "$ILBMDecodeDelegateDefault", "$ILBMDecodeDeleg
 AC_PATH_PROG(ILBMEncodeDelegate, "$ILBMEncodeDelegateDefault", "$ILBMEncodeDelegateDefault")
 AC_PATH_PROG(JXRDecodeDelegate, "$JXRDecodeDelegateDefault", "$JXRDecodeDelegateDefault")
 AC_PATH_PROG(JXREncodeDelegate, "$JXREncodeDelegateDefault", "$JXREncodeDelegateDefault")
+AC_PATH_PROG(LEPDelegate, "$LEPDelegateDefault", "$LEPDelegateDefault")
 AC_PATH_PROG(LPDelegate, "$LPDelegateDefault", no)
 AC_PATH_PROG(LPRDelegate, "$LPRDelegateDefault", "$LPRDelegateDefault")
 AC_PATH_PROG(LaunchDelegate, "$LaunchDelegateDefault", "$LaunchDelegateDefault")
@@ -3229,6 +3324,27 @@ case "${build_os}" in
     ;;
 esac
 
+# URW-base35 fonts.
+AC_MSG_CHECKING(for URW-base35 fonts directory)
+urw_base35_font_dir=''
+if test "${with_urw_base35_font_dir}" != 'default'; then
+  urw_base35_font_dir="${with_urw_base35_font_dir}/"
+else
+  for font_dir in "${prefix}/share/urw-base35/fonts/" '/usr/share/fonts/urw-base35/'; do
+    if test -f "${font_dir}StandardSymbolsPS.t1"; then
+      urw_base35_font_dir="${font_dir}"
+      break 1
+    fi
+  done
+fi
+if test "${urw_base35_font_dir}x" != 'x'; then
+  type_include_files="${type_include_files} "'<include file="type-urw-base35.xml" />'
+  AC_MSG_RESULT([$urw_base35_font_dir])
+else
+  AC_MSG_RESULT([not found!]);
+fi
+AC_SUBST(urw_base35_font_dir)
+
 # Windows fonts.
 AC_MSG_CHECKING(for Windows fonts directory)
 windows_font_dir=''
@@ -3274,6 +3390,7 @@ if test "$with_frozenpaths" != 'yes'; then
   ILBMEncodeDelegate="$ILBMEncodeDelegateDefault"
   JXRDecodeDelegate="$JXRDecodeDelegateDefault"
   JXREncodeDelegate="$JXREncodeDelegateDefault"
+  LEPDelegate="$LEPDelegateDefault"
   LPDelegate="$LPDelegateDefault"
   LaunchDelegate="$LaunchDelegateDefault"
   MPEGDecodeDelegate="$MPEGDecodeDelegateDefault"
@@ -3307,6 +3424,7 @@ AC_SUBST(ILBMDecodeDelegate)
 AC_SUBST(ILBMEncodeDelegate)
 AC_SUBST(JXRDecodeDelegate)
 AC_SUBST(JXREncodeDelegate)
+AC_SUBST(LEPDelegate)
 AC_SUBST(LPDelegate)
 AC_SUBST(LaunchDelegate)
 AC_SUBST(MPEGDecodeDelegate)
@@ -3633,6 +3751,9 @@ fi
 if test "$have_gslib"    = 'yes' ; then
    MAGICK_DELEGATES="$MAGICK_DELEGATES gslib"
 fi
+if test "$have_heic"    = 'yes' ; then
+   MAGICK_DELEGATES="$MAGICK_DELEGATES heic"
+fi
 if test "$have_jbig"    = 'yes' ; then
    MAGICK_DELEGATES="$MAGICK_DELEGATES jbig"
 fi
@@ -3671,6 +3792,9 @@ if test "$have_dps"    = 'yes' || \
 fi
 if test "$have_ps"     = 'yes' ; then
    MAGICK_DELEGATES="$MAGICK_DELEGATES ps"
+fi
+if test "$have_raw"    = 'yes' ; then
+   MAGICK_DELEGATES="$MAGICK_DELEGATES raw"
 fi
 if test "$have_raqm"    = 'yes' ; then
    MAGICK_DELEGATES="$MAGICK_DELEGATES raqm"
@@ -3753,7 +3877,7 @@ fi
 if test "$build_modules" != 'no'; then
     MAGICK_DEP_LIBS="$USER_LIBS $LCMS_LIBS $FREETYPE_LIBS $RAQM_LIBS $LQR_LIBS $FFTW_LIBS $FLIF_LIBS $FONTCONFIG_LIBS $XEXT_LIBS $IPC_LIBS $X11_LIBS $XT_LIBS $LZMA_LIBS $BZLIB_LIBS $ZLIB_LIBS $LTDL_LIBS $GDI32_LIBS $MATH_LIBS $GOMP_LIBS $CL_LIBS $UMEM_LIBS $JEMALLOC_LIBS $THREAD_LIBS"
 else
-    MAGICK_DEP_LIBS="$USER_LIBS $JBIG_LIBS $LCMS_LIBS $TIFF_LIBS $FREETYPE_LIBS $RAQM_LIBS $JPEG_LIBS $GS_LIBS $LQR_LIBS $PNG_LIBS $AUTOTRACE_LIBS $DJVU_LIBS $FFTW_LIBS $FLIF_LIBS $FPX_LIBS $FONTCONFIG_LIBS $WEBP_LIBS $WMF_LIBS $DPS_LIBS $XEXT_LIBS $XT_LIBS $IPC_LIBS $X11_LIBS $LZMA_LIBS $BZLIB_LIBS $OPENEXR_LIBS $LIBOPENJP2_LIBS $PANGO_LIBS $RSVG_LIBS $XML_LIBS $GVC_LIBS $ZLIB_LIBS $GDI32_LIBS $MATH_LIBS $GOMP_LIBS $CL_LIBS $UMEM_LIBS $JEMALLOC_LIBS $THREAD_LIBS"
+    MAGICK_DEP_LIBS="$USER_LIBS $JBIG_LIBS $LCMS_LIBS $TIFF_LIBS $FREETYPE_LIBS $RAQM_LIBS $JPEG_LIBS $GS_LIBS $LQR_LIBS $PNG_LIBS $AUTOTRACE_LIBS $DJVU_LIBS $FFTW_LIBS $FLIF_LIBS $FPX_LIBS $FONTCONFIG_LIBS $HEIC_LIBS $WEBPMUX_LIBS $WEBP_LIBS $WMF_LIBS $DPS_LIBS $XEXT_LIBS $XT_LIBS $IPC_LIBS $X11_LIBS $LZMA_LIBS $BZLIB_LIBS $OPENEXR_LIBS $LIBOPENJP2_LIBS $PANGO_LIBS $RAW_R_LIBS $RSVG_LIBS $XML_LIBS $GVC_LIBS $ZLIB_LIBS $GDI32_LIBS $MATH_LIBS $GOMP_LIBS $CL_LIBS $UMEM_LIBS $JEMALLOC_LIBS $THREAD_LIBS"
 fi
 AC_SUBST(MAGICK_DEP_LIBS)
 
@@ -3823,6 +3947,7 @@ AC_CONFIG_FILES([\
     config/type-apple.xml \
     config/type-dejavu.xml \
     config/type-ghostscript.xml \
+    config/type-urw-base35.xml \
     config/type-windows.xml \
     config/type.xml \
     ImageMagick.spec \
@@ -3895,6 +4020,7 @@ matches your expectations.
   FreeType          --with-freetype=$with_freetype		$have_freetype
   Ghostscript lib   --with-gslib=$with_gslib		$have_gslib
   Graphviz          --with-gvc=$with_gvc		$have_gvc
+  HEIC              --with-heic=$with_heic		$have_heic
   JBIG              --with-jbig=$with_jbig		$have_jbig
   JPEG v1           --with-jpeg=$with_jpeg		$have_jpeg
   LCMS              --with-lcms=$with_lcms		$have_lcms
@@ -3908,6 +4034,7 @@ matches your expectations.
   PERL              --with-perl=$with_perl		$have_perl
   PNG               --with-png=$with_png		$have_png
   RAQM              --with-raqm=$with_raqm		$have_raqm
+  RAW               --with-raw=$with_raw		$have_raw
   RSVG              --with-rsvg=$with_rsvg		$have_rsvg
   TIFF              --with-tiff=$with_tiff		$have_tiff
   WEBP              --with-webp=$with_webp		$have_webp
@@ -3925,6 +4052,7 @@ matches your expectations.
   Apple fonts       --with-apple-font-dir=$with_apple_font_dir	$result_apple_font_dir
   Dejavu fonts      --with-dejavu-font-dir=$with_dejavu_font_dir	$result_dejavu_font_dir
   Ghostscript fonts --with-gs-font-dir=$with_gs_font_dir	$result_ghostscript_font_dir
+  URW-base35 fonts  --with-urw-base35-font-dir=$with_urw_base35_font_dir  $result_urw_base35_font_dir
   Windows fonts     --with-windows-font-dir=$with_windows_font_dir	$result_windows_font_dir
 
   X11 Configuration:

@@ -17,13 +17,13 @@
 %                               December 2003                                 %
 %                                                                             %
 %                                                                             %
-%  Copyright 1999-2016 ImageMagick Studio LLC, a non-profit organization      %
+%  Copyright 1999-2017 ImageMagick Studio LLC, a non-profit organization      %
 %  dedicated to making software imaging solutions freely available.           %
 %                                                                             %
 %  You may not use this file except in compliance with the License.  You may  %
 %  obtain a copy of the License at                                            %
 %                                                                             %
-%    http://www.imagemagick.org/script/license.php                            %
+%    https://www.imagemagick.org/script/license.php                           %
 %                                                                             %
 %  Unless required by applicable law or agreed to in writing, software        %
 %  distributed under the License is distributed on an "AS IS" BASIS,          %
@@ -60,7 +60,7 @@
 #include "MagickCore/token.h"
 #include "MagickCore/utility.h"
 #include "MagickCore/version.h"
-
+
 /*
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %                                                                             %
@@ -139,7 +139,7 @@ static MagickBooleanType ChannelImage(Image *destination_image,
   width=MagickMin(source_image->columns,destination_image->columns);
 #if defined(MAGICKCORE_OPENMP_SUPPORT)
   #pragma omp parallel for schedule(static,4) shared(status) \
-    magick_threads(source_image,source_image,height,1)
+    magick_number_threads(source_image,source_image,height,1)
 #endif
   for (y=0; y < (ssize_t) height; y++)
   {
@@ -239,6 +239,12 @@ MagickExport Image *ChannelFxImage(const Image *image,const char *expression,
     return((Image *) NULL);
   if (expression == (const char *) NULL)
     return(destination_image);
+  status=SetImageStorageClass(destination_image,DirectClass,exception);
+  if (status == MagickFalse)
+    {
+      destination_image=GetLastImageInList(destination_image);
+      return((Image *) NULL);
+    }
   destination_channel=RedPixelChannel;
   channel_mask=UndefinedChannel;
   pixel=0.0;
@@ -276,12 +282,10 @@ MagickExport Image *ChannelFxImage(const Image *image,const char *expression,
 
         (void) SetPixelChannelMask(destination_image,channel_mask);
         if ((channel_op == ExtractChannelOp) && (channels == 1))
-          (void) SetImageColorspace(destination_image,GRAYColorspace,exception);
-        status=SetImageStorageClass(destination_image,DirectClass,exception);
-        if (status == MagickFalse)
           {
-            destination_image=DestroyImageList(destination_image);
-            return(destination_image);
+            (void) SetPixelMetaChannels(destination_image,0,exception);
+            (void) SetImageColorspace(destination_image,GRAYColorspace,
+              exception);
           }
         canvas=CloneImage(source_image,0,0,MagickTrue,exception);
         if (canvas == (Image *) NULL)
@@ -291,6 +295,12 @@ MagickExport Image *ChannelFxImage(const Image *image,const char *expression,
           }
         AppendImageToList(&destination_image,canvas);
         destination_image=GetLastImageInList(destination_image);
+        status=SetImageStorageClass(destination_image,DirectClass,exception);
+        if (status == MagickFalse)
+          {
+            destination_image=GetLastImageInList(destination_image);
+            return((Image *) NULL);
+          }
         GetNextToken(p,&p,MagickPathExtent,token);
         channels=0;
         destination_channel=RedPixelChannel;
@@ -331,54 +341,60 @@ MagickExport Image *ChannelFxImage(const Image *image,const char *expression,
     switch (channel_op)
     {
       case AssignChannelOp:
-      {
-        pixel=StringToDoubleInterval(token,(double) QuantumRange+1.0);
-        GetNextToken(p,&p,MagickPathExtent,token);
-        break;
-      }
       case ExchangeChannelOp:
       case TransferChannelOp:
       {
-        i=ParsePixelChannelOption(token);
-        if (i < 0)
+        if (channel_op == AssignChannelOp)
+          pixel=StringToDoubleInterval(token,(double) QuantumRange+1.0);
+        else
           {
-            (void) ThrowMagickException(exception,GetMagickModule(),OptionError,
-              "UnrecognizedChannelType","`%s'",token);
-            destination_image=DestroyImageList(destination_image);
-            return(destination_image);
+            i=ParsePixelChannelOption(token);
+            if (i < 0)
+              {
+                (void) ThrowMagickException(exception,GetMagickModule(),
+                  OptionError,"UnrecognizedChannelType","`%s'",token);
+                destination_image=DestroyImageList(destination_image);
+                return(destination_image);
+              }
           }
         destination_channel=(PixelChannel) i;
-        switch (destination_channel)
-        {
-          case RedPixelChannel:
-          case GreenPixelChannel:
-          case BluePixelChannel:
-          case BlackPixelChannel:
-          case IndexPixelChannel:
-            break;
-          case AlphaPixelChannel:
+        if (i >= (ssize_t) GetPixelChannels(destination_image))
+          (void) SetPixelMetaChannels(destination_image,(size_t) (
+            destination_channel-GetPixelChannels(destination_image)+1),
+            exception);
+        if (image->colorspace != UndefinedColorspace)
+          switch (destination_channel)
           {
-            destination_image->alpha_trait=BlendPixelTrait;
-            break;
+            case RedPixelChannel:
+            case GreenPixelChannel:
+            case BluePixelChannel:
+            case BlackPixelChannel:
+            case IndexPixelChannel:
+              break;
+            case AlphaPixelChannel:
+            {
+              destination_image->alpha_trait=BlendPixelTrait;
+              break;
+            }
+            case ReadMaskPixelChannel:
+            {
+              destination_image->read_mask=MagickTrue;
+              break;
+            }
+            case WriteMaskPixelChannel:
+            {
+              destination_image->write_mask=MagickTrue;
+              break;
+            }
+            case MetaPixelChannel:
+            default:
+            {
+              (void) SetPixelMetaChannels(destination_image,(size_t) (
+                destination_channel-GetPixelChannels(destination_image)+1),
+                exception);
+              break;
+            }
           }
-          case ReadMaskPixelChannel:
-          {
-            destination_image->read_mask=MagickTrue;
-            break;
-          }
-          case WriteMaskPixelChannel:
-          {
-            destination_image->write_mask=MagickTrue;
-            break;
-          }
-          case MetaPixelChannel:
-          default:
-          {
-            (void) SetPixelMetaChannels(destination_image,(size_t) (i-
-              GetPixelChannels(destination_image)+1),exception);
-            break;
-          }
-        }
         channel_mask=(ChannelType) (channel_mask | ParseChannelOption(token));
         if (((channels >= 1)  || (destination_channel >= 1)) &&
             (IsGrayColorspace(destination_image->colorspace) != MagickFalse))
@@ -426,16 +442,13 @@ MagickExport Image *ChannelFxImage(const Image *image,const char *expression,
   }
   (void) SetPixelChannelMask(destination_image,channel_mask);
   if ((channel_op == ExtractChannelOp) && (channels == 1))
-    (void) SetImageColorspace(destination_image,GRAYColorspace,exception);
-  status=SetImageStorageClass(destination_image,DirectClass,exception);
-  if (status == MagickFalse)
     {
-      destination_image=GetLastImageInList(destination_image);
-      return((Image *) NULL);
+      (void) SetPixelMetaChannels(destination_image,0,exception);
+      (void) SetImageColorspace(destination_image,GRAYColorspace,exception);
     }
   return(GetFirstImageInList(destination_image));
 }
-
+
 /*
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %                                                                             %
@@ -503,12 +516,37 @@ MagickExport Image *CombineImages(const Image *image,
       combine_image=DestroyImage(combine_image);
       return((Image *) NULL);
     }
-  if ((colorspace == UndefinedColorspace) || (image->number_channels == 1))
-    (void) SetImageColorspace(combine_image,sRGBColorspace,exception);
-  else
+  if (colorspace != UndefinedColorspace)
     (void) SetImageColorspace(combine_image,colorspace,exception);
-  if ((GetPixelAlphaTraits(image) & UpdatePixelTrait) != 0)
-    combine_image->alpha_trait=BlendPixelTrait;
+  else
+    if (fabs(image->gamma-1.0) <= MagickEpsilon)
+      (void) SetImageColorspace(combine_image,RGBColorspace,exception);
+    else
+      (void) SetImageColorspace(combine_image,sRGBColorspace,exception);
+  switch (combine_image->colorspace)
+  {
+    case UndefinedColorspace:
+    case sRGBColorspace:
+    {
+      if (GetImageListLength(image) > 3)
+        combine_image->alpha_trait=BlendPixelTrait;
+      break;
+    }
+    case GRAYColorspace:
+    {
+      if (GetImageListLength(image) > 1)
+        combine_image->alpha_trait=BlendPixelTrait;
+      break;
+    }
+    case CMYKColorspace:
+    {
+      if (GetImageListLength(image) > 4)
+        combine_image->alpha_trait=BlendPixelTrait;
+      break;
+    }
+    default:
+      break;
+  }
   /*
     Combine images.
   */
@@ -550,8 +588,8 @@ MagickExport Image *CombineImages(const Image *image,
       register ssize_t
         x;
 
-      PixelChannel channel=GetPixelChannelChannel(combine_image,i);
-      PixelTrait traits=GetPixelChannelTraits(combine_image,channel);
+      PixelChannel channel = GetPixelChannelChannel(combine_image,i);
+      PixelTrait traits = GetPixelChannelTraits(combine_image,channel);
       if (traits == UndefinedPixelTrait)
         continue;
       if (next == (Image *) NULL)
@@ -591,7 +629,7 @@ MagickExport Image *CombineImages(const Image *image,
     combine_image=DestroyImage(combine_image);
   return(combine_image);
 }
-
+
 /*
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %                                                                             %
@@ -624,7 +662,7 @@ MagickExport MagickBooleanType GetImageAlphaChannel(const Image *image)
   assert(image->signature == MagickCoreSignature);
   return(image->alpha_trait != UndefinedPixelTrait ? MagickTrue : MagickFalse);
 }
-
+
 /*
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %                                                                             %
@@ -693,8 +731,9 @@ MagickExport Image *SeparateImage(const Image *image,
       separate_image=DestroyImage(separate_image);
       return((Image *) NULL);
     }
-  (void) SetImageColorspace(separate_image,GRAYColorspace,exception);
   separate_image->alpha_trait=UndefinedPixelTrait;
+  (void) SetImageColorspace(separate_image,GRAYColorspace,exception);
+  separate_image->gamma=image->gamma;
   /*
     Separate image.
   */
@@ -704,7 +743,7 @@ MagickExport Image *SeparateImage(const Image *image,
   separate_view=AcquireAuthenticCacheView(separate_image,exception);
 #if defined(MAGICKCORE_OPENMP_SUPPORT)
   #pragma omp parallel for schedule(static,4) shared(progress,status) \
-    magick_threads(image,image,image->rows,1)
+    magick_number_threads(image,image,image->rows,1)
 #endif
   for (y=0; y < (ssize_t) image->rows; y++)
   {
@@ -732,7 +771,7 @@ MagickExport Image *SeparateImage(const Image *image,
       register ssize_t
         i;
 
-      if (GetPixelReadMask(image,p) == 0)
+      if (GetPixelWriteMask(image,p) <= (QuantumRange/2))
         {
           SetPixelBackgoundColor(separate_image,q);
           p+=GetPixelChannels(image);
@@ -742,8 +781,8 @@ MagickExport Image *SeparateImage(const Image *image,
       SetPixelChannel(separate_image,GrayPixelChannel,0,q);
       for (i=0; i < (ssize_t) GetPixelChannels(image); i++)
       {
-        PixelChannel channel=GetPixelChannelChannel(image,i);
-        PixelTrait traits=GetPixelChannelTraits(image,channel);
+        PixelChannel channel = GetPixelChannelChannel(image,i);
+        PixelTrait traits = GetPixelChannelTraits(image,channel);
         if ((traits == UndefinedPixelTrait) ||
             (GetChannelBit(channel_type,channel) == 0))
           continue;
@@ -774,7 +813,7 @@ MagickExport Image *SeparateImage(const Image *image,
     separate_image=DestroyImage(separate_image);
   return(separate_image);
 }
-
+
 /*
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %                                                                             %
@@ -816,10 +855,9 @@ MagickExport Image *SeparateImages(const Image *image,ExceptionInfo *exception)
   images=NewImageList();
   for (i=0; i < (ssize_t) GetPixelChannels(image); i++)
   {
-    PixelChannel channel=GetPixelChannelChannel(image,i);
-    PixelTrait traits=GetPixelChannelTraits(image,channel);
-    if ((traits == UndefinedPixelTrait) ||
-        ((traits & UpdatePixelTrait) == 0))
+    PixelChannel channel = GetPixelChannelChannel(image,i);
+    PixelTrait traits = GetPixelChannelTraits(image,channel);
+    if ((traits == UndefinedPixelTrait) || ((traits & UpdatePixelTrait) == 0))
       continue;
     separate_image=SeparateImage(image,(ChannelType) (1 << channel),exception);
     if (separate_image != (Image *) NULL)
@@ -829,7 +867,7 @@ MagickExport Image *SeparateImages(const Image *image,ExceptionInfo *exception)
     images=SeparateImage(image,UndefinedChannel,exception);
   return(images);
 }
-
+
 /*
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %                                                                             %
@@ -884,8 +922,8 @@ static inline void FlattenPixelInfo(const Image *image,const PixelInfo *p,
   gamma=PerceptibleReciprocal(gamma);
   for (i=0; i < (ssize_t) GetPixelChannels(image); i++)
   {
-    PixelChannel channel=GetPixelChannelChannel(image,i);
-    PixelTrait traits=GetPixelChannelTraits(image,channel);
+    PixelChannel channel = GetPixelChannelChannel(image,i);
+    PixelTrait traits = GetPixelChannelTraits(image,channel);
     if (traits == UndefinedPixelTrait)
       continue;
     switch (channel)
@@ -960,7 +998,7 @@ MagickExport MagickBooleanType SetImageAlphaChannel(Image *image,
       image_view=AcquireAuthenticCacheView(image,exception);
 #if defined(MAGICKCORE_OPENMP_SUPPORT)
       #pragma omp parallel for schedule(static,4) shared(status) \
-        magick_threads(image,image,image->rows,1)
+        magick_number_threads(image,image,image->rows,1)
 #endif
       for (y=0; y < (ssize_t) image->rows; y++)
       {
@@ -983,11 +1021,11 @@ MagickExport MagickBooleanType SetImageAlphaChannel(Image *image,
         {
           double
             gamma;
-  
+
           register ssize_t
             i;
-  
-          if (GetPixelReadMask(image,q) == 0)
+
+          if (GetPixelWriteMask(image,q) <= (QuantumRange/2))
             {
               q+=GetPixelChannels(image);
               continue;
@@ -995,8 +1033,8 @@ MagickExport MagickBooleanType SetImageAlphaChannel(Image *image,
           gamma=QuantumScale*GetPixelAlpha(image,q);
           for (i=0; i < (ssize_t) GetPixelChannels(image); i++)
           {
-            PixelChannel channel=GetPixelChannelChannel(image,i);
-            PixelTrait traits=GetPixelChannelTraits(image,channel);
+            PixelChannel channel = GetPixelChannelChannel(image,i);
+            PixelTrait traits = GetPixelChannelTraits(image,channel);
             if (channel == AlphaPixelChannel)
               continue;
             if ((traits & UpdatePixelTrait) == 0)
@@ -1025,7 +1063,7 @@ MagickExport MagickBooleanType SetImageAlphaChannel(Image *image,
       image_view=AcquireAuthenticCacheView(image,exception);
 #if defined(MAGICKCORE_OPENMP_SUPPORT)
       #pragma omp parallel for schedule(static,4) shared(status) \
-        magick_threads(image,image,image->rows,1)
+        magick_number_threads(image,image,image->rows,1)
 #endif
       for (y=0; y < (ssize_t) image->rows; y++)
       {
@@ -1060,17 +1098,10 @@ MagickExport MagickBooleanType SetImageAlphaChannel(Image *image,
       return(status);
     }
     case CopyAlphaChannel:
-    case ShapeAlphaChannel:
     {
-      /*
-        Copy pixel intensity to the alpha channel.
-      */
       image->alpha_trait=UpdatePixelTrait;
       status=CompositeImage(image,image,IntensityCompositeOp,MagickTrue,0,0,
         exception);
-      if (alpha_type == ShapeAlphaChannel)
-        (void) LevelImageColors(image,&image->background_color,
-          &image->background_color,MagickTrue,exception);
       break;
     }
     case DeactivateAlphaChannel:
@@ -1092,7 +1123,7 @@ MagickExport MagickBooleanType SetImageAlphaChannel(Image *image,
       image_view=AcquireAuthenticCacheView(image,exception);
 #if defined(MAGICKCORE_OPENMP_SUPPORT)
       #pragma omp parallel for schedule(static,4) shared(status) \
-        magick_threads(image,image,image->rows,1)
+        magick_number_threads(image,image,image->rows,1)
 #endif
       for (y=0; y < (ssize_t) image->rows; y++)
       {
@@ -1114,13 +1145,13 @@ MagickExport MagickBooleanType SetImageAlphaChannel(Image *image,
         for (x=0; x < (ssize_t) image->columns; x++)
         {
           double
-            gamma, 
+            gamma,
             Sa;
 
           register ssize_t
             i;
 
-          if (GetPixelReadMask(image,q) == 0)
+          if (GetPixelWriteMask(image,q) <= (QuantumRange/2))
             {
               q+=GetPixelChannels(image);
               continue;
@@ -1129,8 +1160,8 @@ MagickExport MagickBooleanType SetImageAlphaChannel(Image *image,
           gamma=PerceptibleReciprocal(Sa);
           for (i=0; i < (ssize_t) GetPixelChannels(image); i++)
           {
-            PixelChannel channel=GetPixelChannelChannel(image,i);
-            PixelTrait traits=GetPixelChannelTraits(image,channel);
+            PixelChannel channel = GetPixelChannelChannel(image,i);
+            PixelTrait traits = GetPixelChannelTraits(image,channel);
             if (channel == AlphaPixelChannel)
               continue;
             if ((traits & UpdatePixelTrait) == 0)
@@ -1190,7 +1221,7 @@ MagickExport MagickBooleanType SetImageAlphaChannel(Image *image,
       image_view=AcquireAuthenticCacheView(image,exception);
 #if defined(MAGICKCORE_OPENMP_SUPPORT)
       #pragma omp parallel for schedule(static,4) shared(status) \
-        magick_threads(image,image,image->rows,1)
+        magick_number_threads(image,image,image->rows,1)
 #endif
       for (y=0; y < (ssize_t) image->rows; y++)
       {
@@ -1227,6 +1258,21 @@ MagickExport MagickBooleanType SetImageAlphaChannel(Image *image,
     {
       if (image->alpha_trait == UndefinedPixelTrait)
         status=SetImageAlpha(image,OpaqueAlpha,exception);
+      break;
+    }
+    case ShapeAlphaChannel:
+    {
+      /*
+        Set alpha channel by shape.
+      */
+      status=SetImageStorageClass(image,DirectClass,exception);
+      if (status == MagickFalse)
+        break;
+      image->alpha_trait=UpdatePixelTrait;
+      (void) SetImageMask(image,WritePixelMask,image,exception);
+      (void) LevelImageColors(image,&image->background_color,
+        &image->background_color,MagickTrue,exception);
+      (void) SetImageMask(image,WritePixelMask,(Image *) NULL,exception);
       break;
     }
     case TransparentAlphaChannel:

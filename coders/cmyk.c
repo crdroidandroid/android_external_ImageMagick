@@ -17,13 +17,13 @@
 %                                 July 1992                                   %
 %                                                                             %
 %                                                                             %
-%  Copyright 1999-2016 ImageMagick Studio LLC, a non-profit organization      %
+%  Copyright 1999-2017 ImageMagick Studio LLC, a non-profit organization      %
 %  dedicated to making software imaging solutions freely available.           %
 %                                                                             %
 %  You may not use this file except in compliance with the License.  You may  %
 %  obtain a copy of the License at                                            %
 %                                                                             %
-%    http://www.imagemagick.org/script/license.php                            %
+%    https://www.imagemagick.org/script/license.php                           %
 %                                                                             %
 %  Unless required by applicable law or agreed to in writing, software        %
 %  distributed under the License is distributed on an "AS IS" BASIS,          %
@@ -141,7 +141,10 @@ static Image *ReadCMYKImage(const ImageInfo *image_info,
   image=AcquireImage(image_info,exception);
   if ((image->columns == 0) || (image->rows == 0))
     ThrowReaderException(OptionError,"MustSpecifyImageSize");
-  SetImageColorspace(image,CMYKColorspace,exception);
+  status=SetImageExtent(image,image->columns,image->rows,exception);
+  if (status == MagickFalse)
+    return(DestroyImageList(image));
+  (void) SetImageColorspace(image,CMYKColorspace,exception);
   if (image_info->interlace != PartitionInterlace)
     {
       status=OpenBlob(image_info,image,ReadBinaryBlobMode,exception);
@@ -150,7 +153,7 @@ static Image *ReadCMYKImage(const ImageInfo *image_info,
           image=DestroyImageList(image);
           return((Image *) NULL);
         }
-      if (DiscardBlobBytes(image,image->offset) == MagickFalse)
+      if (DiscardBlobBytes(image,(MagickSizeType) image->offset) == MagickFalse)
         ThrowFileException(exception,CorruptImageError,"UnexpectedEndOfFile",
           image->filename);
     }
@@ -159,6 +162,8 @@ static Image *ReadCMYKImage(const ImageInfo *image_info,
   */
   canvas_image=CloneImage(image,image->extract_info.width,1,MagickFalse,
     exception);
+  if (canvas_image == (Image *) NULL)
+    ThrowReaderException(ResourceLimitError,"MemoryAllocationFailed");
   (void) SetImageVirtualPixelMethod(canvas_image,BlackVirtualPixelMethod,
     exception);
   quantum_info=AcquireQuantumInfo(image_info,canvas_image);
@@ -190,6 +195,7 @@ static Image *ReadCMYKImage(const ImageInfo *image_info,
   count=0;
   length=0;
   scene=0;
+  status=MagickTrue;
   do
   {
     /*
@@ -200,8 +206,9 @@ static Image *ReadCMYKImage(const ImageInfo *image_info,
         break;
     status=SetImageExtent(image,image->columns,image->rows,exception);
     if (status == MagickFalse)
-      return(DestroyImageList(image));
-    SetImageColorspace(image,CMYKColorspace,exception);
+      break;
+    if (SetImageColorspace(image,CMYKColorspace,exception) == MagickFalse)
+      break;
     switch (image_info->interlace)
     {
       case NoInterlace:
@@ -229,6 +236,7 @@ static Image *ReadCMYKImage(const ImageInfo *image_info,
 
           if (count != (ssize_t) length)
             {
+              status=MagickFalse;
               ThrowFileException(exception,CorruptImageError,
                 "UnexpectedEndOfFile",image->filename);
               break;
@@ -248,8 +256,7 @@ static Image *ReadCMYKImage(const ImageInfo *image_info,
                 canvas_image->columns,1,exception);
               q=QueueAuthenticPixels(image,0,y-image->extract_info.y,
                 image->columns,1,exception);
-              if ((p == (const Quantum *) NULL) ||
-                  (q == (Quantum *) NULL))
+              if ((p == (const Quantum *) NULL) || (q == (Quantum *) NULL))
                 break;
               for (x=0; x < (ssize_t) image->columns; x++)
               {
@@ -312,11 +319,12 @@ static Image *ReadCMYKImage(const ImageInfo *image_info,
 
           if (count != (ssize_t) length)
             {
+              status=MagickFalse;
               ThrowFileException(exception,CorruptImageError,
                 "UnexpectedEndOfFile",image->filename);
               break;
             }
-          for (i=0; i < (image->alpha_trait != UndefinedPixelTrait ? 5 : 4); i++)
+          for (i=0; i < (ssize_t) (image->alpha_trait != UndefinedPixelTrait ? 5 : 4); i++)
           {
             quantum_type=quantum_types[i];
             q=GetAuthenticPixels(canvas_image,0,0,canvas_image->columns,1,
@@ -334,8 +342,7 @@ static Image *ReadCMYKImage(const ImageInfo *image_info,
                   0,canvas_image->columns,1,exception);
                 q=GetAuthenticPixels(image,0,y-image->extract_info.y,
                   image->columns,1,exception);
-                if ((p == (const Quantum *) NULL) ||
-                    (q == (Quantum *) NULL))
+                if ((p == (const Quantum *) NULL) || (q == (Quantum *) NULL))
                   break;
                 for (x=0; x < (ssize_t) image->columns; x++)
                 {
@@ -412,6 +419,7 @@ static Image *ReadCMYKImage(const ImageInfo *image_info,
 
           if (count != (ssize_t) length)
             {
+              status=MagickFalse;
               ThrowFileException(exception,CorruptImageError,
                 "UnexpectedEndOfFile",image->filename);
               break;
@@ -431,8 +439,7 @@ static Image *ReadCMYKImage(const ImageInfo *image_info,
                 canvas_image->columns,1,exception);
               q=GetAuthenticPixels(image,0,y-image->extract_info.y,
                 image->columns,1,exception);
-              if ((p == (const Quantum *) NULL) ||
-                  (q == (Quantum *) NULL))
+              if ((p == (const Quantum *) NULL) || (q == (Quantum *) NULL))
                 break;
               for (x=0; x < (ssize_t) image->columns; x++)
               {
@@ -465,6 +472,7 @@ static Image *ReadCMYKImage(const ImageInfo *image_info,
 
           if (count != (ssize_t) length)
             {
+              status=MagickFalse;
               ThrowFileException(exception,CorruptImageError,
                 "UnexpectedEndOfFile",image->filename);
               break;
@@ -484,8 +492,7 @@ static Image *ReadCMYKImage(const ImageInfo *image_info,
                 canvas_image->columns,1,exception);
               q=GetAuthenticPixels(image,0,y-image->extract_info.y,
                 image->columns,1,exception);
-              if ((p == (const Quantum *) NULL) ||
-                  (q == (Quantum *) NULL))
+              if ((p == (const Quantum *) NULL) || (q == (Quantum *) NULL))
                 break;
               for (x=0; x < (ssize_t) image->columns; x++)
               {
@@ -518,6 +525,7 @@ static Image *ReadCMYKImage(const ImageInfo *image_info,
 
           if (count != (ssize_t) length)
             {
+              status=MagickFalse;
               ThrowFileException(exception,CorruptImageError,
                 "UnexpectedEndOfFile",image->filename);
               break;
@@ -537,8 +545,7 @@ static Image *ReadCMYKImage(const ImageInfo *image_info,
                 canvas_image->columns,1,exception);
               q=GetAuthenticPixels(image,0,y-image->extract_info.y,
                 image->columns,1,exception);
-              if ((p == (const Quantum *) NULL) ||
-                  (q == (Quantum *) NULL))
+              if ((p == (const Quantum *) NULL) || (q == (Quantum *) NULL))
                 break;
               for (x=0; x < (ssize_t) image->columns; x++)
               {
@@ -571,6 +578,7 @@ static Image *ReadCMYKImage(const ImageInfo *image_info,
 
           if (count != (ssize_t) length)
             {
+              status=MagickFalse;
               ThrowFileException(exception,CorruptImageError,
                 "UnexpectedEndOfFile",image->filename);
               break;
@@ -590,8 +598,7 @@ static Image *ReadCMYKImage(const ImageInfo *image_info,
                 canvas_image->columns,1,exception);
               q=GetAuthenticPixels(image,0,y-image->extract_info.y,
                 image->columns,1,exception);
-              if ((p == (const Quantum *) NULL) ||
-                  (q == (Quantum *) NULL))
+              if ((p == (const Quantum *) NULL) || (q == (Quantum *) NULL))
                 break;
               for (x=0; x < (ssize_t) image->columns; x++)
               {
@@ -626,6 +633,7 @@ static Image *ReadCMYKImage(const ImageInfo *image_info,
 
               if (count != (ssize_t) length)
                 {
+                  status=MagickFalse;
                   ThrowFileException(exception,CorruptImageError,
                     "UnexpectedEndOfFile",image->filename);
                   break;
@@ -646,8 +654,7 @@ static Image *ReadCMYKImage(const ImageInfo *image_info,
                     exception);
                   q=GetAuthenticPixels(image,0,y-image->extract_info.y,
                     image->columns,1,exception);
-                  if ((p == (const Quantum *) NULL) ||
-                      (q == (Quantum *) NULL))
+                  if ((p == (const Quantum *) NULL) || (q == (Quantum *) NULL))
                     break;
                   for (x=0; x < (ssize_t) image->columns; x++)
                   {
@@ -689,7 +696,7 @@ static Image *ReadCMYKImage(const ImageInfo *image_info,
             image=DestroyImageList(image);
             return((Image *) NULL);
           }
-        if (DiscardBlobBytes(image,image->offset) == MagickFalse)
+        if (DiscardBlobBytes(image,(MagickSizeType) image->offset) == MagickFalse)
           ThrowFileException(exception,CorruptImageError,"UnexpectedEndOfFile",
             image->filename);
         length=GetQuantumExtent(canvas_image,quantum_info,CyanQuantum);
@@ -700,6 +707,7 @@ static Image *ReadCMYKImage(const ImageInfo *image_info,
               GetQuantumPixels(quantum_info),&count);
             if (count != (ssize_t) length)
               {
+                status=MagickFalse;
                 ThrowFileException(exception,CorruptImageError,
                   "UnexpectedEndOfFile",image->filename);
                 break;
@@ -720,6 +728,7 @@ static Image *ReadCMYKImage(const ImageInfo *image_info,
 
           if (count != (ssize_t) length)
             {
+              status=MagickFalse;
               ThrowFileException(exception,CorruptImageError,
                 "UnexpectedEndOfFile",image->filename);
               break;
@@ -739,8 +748,7 @@ static Image *ReadCMYKImage(const ImageInfo *image_info,
                 canvas_image->columns,1,exception);
               q=GetAuthenticPixels(image,0,y-image->extract_info.y,
                 image->columns,1,exception);
-              if ((p == (const Quantum *) NULL) ||
-                  (q == (Quantum *) NULL))
+              if ((p == (const Quantum *) NULL) || (q == (Quantum *) NULL))
                 break;
               for (x=0; x < (ssize_t) image->columns; x++)
               {
@@ -777,6 +785,7 @@ static Image *ReadCMYKImage(const ImageInfo *image_info,
               GetQuantumPixels(quantum_info),&count);
             if (count != (ssize_t) length)
               {
+                status=MagickFalse;
                 ThrowFileException(exception,CorruptImageError,
                   "UnexpectedEndOfFile",image->filename);
                 break;
@@ -797,6 +806,7 @@ static Image *ReadCMYKImage(const ImageInfo *image_info,
 
           if (count != (ssize_t) length)
             {
+              status=MagickFalse;
               ThrowFileException(exception,CorruptImageError,
                 "UnexpectedEndOfFile",image->filename);
               break;
@@ -852,7 +862,8 @@ static Image *ReadCMYKImage(const ImageInfo *image_info,
             pixels=(const unsigned char *) ReadBlobStream(image,length,
               GetQuantumPixels(quantum_info),&count);
             if (count != (ssize_t) length)
-              {
+              { 
+                status=MagickFalse;
                 ThrowFileException(exception,CorruptImageError,
                   "UnexpectedEndOfFile",image->filename);
                 break;
@@ -873,6 +884,7 @@ static Image *ReadCMYKImage(const ImageInfo *image_info,
 
           if (count != (ssize_t) length)
             {
+              status=MagickFalse;
               ThrowFileException(exception,CorruptImageError,
                 "UnexpectedEndOfFile",image->filename);
               break;
@@ -930,6 +942,7 @@ static Image *ReadCMYKImage(const ImageInfo *image_info,
               GetQuantumPixels(quantum_info),&count);
             if (count != (ssize_t) length)
               {
+                status=MagickFalse;
                 ThrowFileException(exception,CorruptImageError,
                   "UnexpectedEndOfFile",image->filename);
                 break;
@@ -950,6 +963,7 @@ static Image *ReadCMYKImage(const ImageInfo *image_info,
 
           if (count != (ssize_t) length)
             {
+              status=MagickFalse;
               ThrowFileException(exception,CorruptImageError,
                 "UnexpectedEndOfFile",image->filename);
               break;
@@ -1009,6 +1023,7 @@ static Image *ReadCMYKImage(const ImageInfo *image_info,
                   GetQuantumPixels(quantum_info),&count);
                 if (count != (ssize_t) length)
                   {
+                    status=MagickFalse;
                     ThrowFileException(exception,CorruptImageError,
                       "UnexpectedEndOfFile",image->filename);
                     break;
@@ -1030,6 +1045,7 @@ static Image *ReadCMYKImage(const ImageInfo *image_info,
 
               if (count != (ssize_t) length)
                 {
+                  status=MagickFalse;
                   ThrowFileException(exception,CorruptImageError,
                     "UnexpectedEndOfFile",image->filename);
                   break;
@@ -1109,6 +1125,8 @@ static Image *ReadCMYKImage(const ImageInfo *image_info,
   quantum_info=DestroyQuantumInfo(quantum_info);
   canvas_image=DestroyImage(canvas_image);
   (void) CloseBlob(image);
+  if (status == MagickFalse)
+    return(DestroyImageList(image));
   return(GetFirstImageInList(image));
 }
 

@@ -17,13 +17,13 @@
 %                                December 1996                                %
 %                                                                             %
 %                                                                             %
-%  Copyright 1999-2016 ImageMagick Studio LLC, a non-profit organization      %
+%  Copyright 1999-2017 ImageMagick Studio LLC, a non-profit organization      %
 %  dedicated to making software imaging solutions freely available.           %
 %                                                                             %
 %  You may not use this file except in compliance with the License.  You may  %
 %  obtain a copy of the License at                                            %
 %                                                                             %
-%    http://www.imagemagick.org/script/license.php                            %
+%    https://www.imagemagick.org/script/license.php                           %
 %                                                                             %
 %  Unless required by applicable law or agreed to in writing, software        %
 %  distributed under the License is distributed on an "AS IS" BASIS,          %
@@ -46,6 +46,7 @@
 #include "MagickCore/log.h"
 #include "MagickCore/magick.h"
 #include "MagickCore/memory_.h"
+#include "MagickCore/memory-private.h"
 #include "MagickCore/nt-base.h"
 #include "MagickCore/nt-base-private.h"
 #include "MagickCore/resource_.h"
@@ -350,7 +351,7 @@ MagickPrivate int Exit(int status)
   exit(status);
 }
 
-#if !defined(__MINGW32__) && !defined(__MINGW64__)
+#if !defined(__MINGW32__)
 /*
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %                                                                             %
@@ -1018,6 +1019,33 @@ MagickPrivate MagickBooleanType NTGetModulePath(const char *module,char *path)
   if (length != 0)
     GetPathComponent(module_path,HeadPath,path);
   return(MagickTrue);
+}
+
+/*
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%                                                                             %
+%                                                                             %
+%                                                                             %
++    N T G e t P a g e S i z e                                                %
+%                                                                             %
+%                                                                             %
+%                                                                             %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%  NTGetPageSize() returns the memory page size under Windows.
+%
+%  The format of the NTPageSize
+%
+%      NTPageSize()
+%
+*/
+MagickPrivate ssize_t NTGetPageSize(void)
+{
+  SYSTEM_INFO
+    system_info;
+
+   GetSystemInfo(&system_info);
+   return((ssize_t) system_info.dwPageSize);
 }
 
 /*
@@ -1757,10 +1785,10 @@ MagickPrivate DIR *NTOpenDirectory(const char *path)
     MagickPathExtent);
   if (length == 0)
     return((DIR *) NULL);
-  if(wcsncat(file_specification,(const wchar_t*) DirectorySeparator,
-       MagickPathExtent-wcslen(file_specification)-1) == (wchar_t*) NULL)
+  if (wcsncat(file_specification,(const wchar_t*) DirectorySeparator,
+        MagickPathExtent-wcslen(file_specification)-1) == (wchar_t*) NULL)
     return((DIR *) NULL);
-  entry=(DIR *) AcquireMagickMemory(sizeof(DIR));
+  entry=(DIR *) AcquireCriticalMemory(sizeof(DIR));
   if (entry != (DIR *) NULL)
     {
       entry->firsttime=TRUE;
@@ -2000,8 +2028,9 @@ MagickPrivate unsigned char *NTRegistryKeyLookup(const char *subkey)
   /*
     Look-up base key.
   */
-  (void) FormatLocaleString(package_key,MagickPathExtent,"SOFTWARE\\%s\\%s\\Q:%d",
-    MagickPackageName,MagickLibVersionText,MAGICKCORE_QUANTUM_DEPTH);
+  (void) FormatLocaleString(package_key,MagickPathExtent,
+    "SOFTWARE\\%s\\%s\\Q:%d",MagickPackageName,MagickLibVersionText,
+    MAGICKCORE_QUANTUM_DEPTH);
   (void) LogMagickEvent(ConfigureEvent,GetMagickModule(),"%s",package_key);
   registry_key=(HKEY) INVALID_HANDLE_VALUE;
   status=RegOpenKeyExA(HKEY_LOCAL_MACHINE,package_key,0,KEY_READ,&registry_key);
@@ -2009,10 +2038,7 @@ MagickPrivate unsigned char *NTRegistryKeyLookup(const char *subkey)
     status=RegOpenKeyExA(HKEY_CURRENT_USER,package_key,0,KEY_READ,
       &registry_key);
   if (status != ERROR_SUCCESS)
-    {
-      registry_key=(HKEY) INVALID_HANDLE_VALUE;
-      return((unsigned char *) NULL);
-    }
+    return((unsigned char *) NULL);
   /*
     Look-up sub key.
   */
@@ -2765,7 +2791,7 @@ MagickPrivate void NTWindowsGenesis(void)
       (void) SetErrorMode(StringToInteger(mode));
       mode=DestroyString(mode);
     }
-#if defined(_DEBUG) && !defined(__BORLANDC__) && !defined(__MINGW32__) && !defined(__MINGW64__)
+#if defined(_DEBUG) && !defined(__BORLANDC__) && !defined(__MINGW32__)
   if (IsEventLogging() != MagickFalse)
     {
       int

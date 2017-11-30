@@ -17,13 +17,13 @@
 %                                 March 2000                                  %
 %                                                                             %
 %                                                                             %
-%  Copyright 1999-2016 ImageMagick Studio LLC, a non-profit organization      %
+%  Copyright 1999-2017 ImageMagick Studio LLC, a non-profit organization      %
 %  dedicated to making software imaging solutions freely available.           %
 %                                                                             %
 %  You may not use this file except in compliance with the License.  You may  %
 %  obtain a copy of the License at                                            %
 %                                                                             %
-%    http://www.imagemagick.org/script/license.php                            %
+%    https://www.imagemagick.org/script/license.php                           %
 %                                                                             %
 %  Unless required by applicable law or agreed to in writing, software        %
 %  distributed under the License is distributed on an "AS IS" BASIS,          %
@@ -61,6 +61,7 @@
 #include "MagickCore/layer.h"
 #include "MagickCore/mime-private.h"
 #include "MagickCore/memory_.h"
+#include "MagickCore/memory-private.h"
 #include "MagickCore/monitor.h"
 #include "MagickCore/montage.h"
 #include "MagickCore/morphology.h"
@@ -87,6 +88,9 @@
 #include "MagickCore/utility-private.h"
 
 #if defined(MAGICKCORE_OPENCL_SUPPORT)
+#if defined(MAGICKCORE_LTDL_DELEGATE)
+#include "ltdl.h"
+#endif
 
 #ifndef MAGICKCORE_WINDOWS_SUPPORT
 #include <dlfcn.h>
@@ -116,6 +120,7 @@ typedef struct
   char
     *name,
     *platform_name,
+    *vendor_name,
     *version;
 
   cl_uint
@@ -168,6 +173,7 @@ static inline MagickBooleanType IsSameOpenCLDevice(MagickCLDevice a,
   MagickCLDevice b)
 {
   if ((LocaleCompare(a->platform_name,b->platform_name) == 0) &&
+      (LocaleCompare(a->vendor_name,b->vendor_name) == 0) &&
       (LocaleCompare(a->name,b->name) == 0) &&
       (LocaleCompare(a->version,b->version) == 0) &&
       (a->max_clock_frequency == b->max_clock_frequency) &&
@@ -181,6 +187,7 @@ static inline MagickBooleanType IsBenchmarkedOpenCLDevice(MagickCLDevice a,
   MagickCLDeviceBenchmark *b)
 {
   if ((LocaleCompare(a->platform_name,b->platform_name) == 0) &&
+      (LocaleCompare(a->vendor_name,b->vendor_name) == 0) &&
       (LocaleCompare(a->name,b->name) == 0) &&
       (LocaleCompare(a->version,b->version) == 0) &&
       (a->max_clock_frequency == b->max_clock_frequency) &&
@@ -320,7 +327,7 @@ static const char *GetOpenCLCacheDirectory()
 
               if (status != MagickFalse)
                 {
-                  temp=(char*) AcquireMagickMemory(strlen(path)+1);
+                  temp=(char*) AcquireCriticalMemory(strlen(path)+1);
                   CopyMagickString(temp,path,strlen(path)+1);
                 }
               home=DestroyString(home);
@@ -350,7 +357,7 @@ static const char *GetOpenCLCacheDirectory()
 
                   if (status != MagickFalse)
                     {
-                      temp=(char*) AcquireMagickMemory(strlen(path)+1);
+                      temp=(char*) AcquireCriticalMemory(strlen(path)+1);
                       CopyMagickString(temp,path,strlen(path)+1);
                     }
                   home=DestroyString(home);
@@ -438,6 +445,21 @@ static size_t StringSignature(const char* string)
   return(signature);
 }
 
+static void DestroyMagickCLCacheInfo(MagickCLCacheInfo info)
+{
+  ssize_t
+    i;
+
+  for (i=0; i < (ssize_t) info->event_count; i++)
+    openCL_library->clReleaseEvent(info->events[i]);
+  info->events=(cl_event *) RelinquishMagickMemory(info->events);
+  if (info->buffer != (cl_mem) NULL)
+    openCL_library->clReleaseMemObject(info->buffer);
+  RelinquishSemaphoreInfo(&info->events_semaphore);
+  ReleaseOpenCLDevice(info->device);
+  RelinquishMagickMemory(info);
+}
+
 /*
   Provide call to OpenCL library methods
 */
@@ -459,10 +481,16 @@ MagickPrivate void ReleaseOpenCLMemObject(cl_mem memobj)
   (void) openCL_library->clReleaseMemObject(memobj);
 }
 
-MagickPrivate cl_int SetOpenCLKernelArg(cl_kernel kernel,cl_uint arg_index,
+MagickPrivate void RetainOpenCLMemObject(cl_mem memobj)
+{
+  (void) openCL_library->clRetainMemObject(memobj);
+}
+
+MagickPrivate cl_int SetOpenCLKernelArg(cl_kernel kernel,size_t arg_index,
   size_t arg_size,const void *arg_value)
 {
-  return(openCL_library->clSetKernelArg(kernel,arg_index,arg_size,arg_value));
+  return(openCL_library->clSetKernelArg(kernel,(cl_uint) arg_index,arg_size,
+    arg_value));
 }
 
 /*
@@ -502,9 +530,7 @@ MagickPrivate MagickCLCacheInfo AcquireMagickCLCacheInfo(MagickCLDevice device,
   MagickCLCacheInfo
     info;
 
-  info=(MagickCLCacheInfo) AcquireMagickMemory(sizeof(*info));
-  if (info == (MagickCLCacheInfo) NULL)
-    ThrowFatalException(ResourceLimitFatalError,"MemoryAllocationFailed");
+  info=(MagickCLCacheInfo) AcquireCriticalMemory(sizeof(*info));
   (void) ResetMagickMemory(info,0,sizeof(*info));
   LockSemaphoreInfo(openCL_lock);
   device->requested++;
@@ -512,15 +538,14 @@ MagickPrivate MagickCLCacheInfo AcquireMagickCLCacheInfo(MagickCLDevice device,
   info->device=device;
   info->length=length;
   info->pixels=pixels;
+  info->events_semaphore=AcquireSemaphoreInfo();
   info->buffer=openCL_library->clCreateBuffer(device->context,
     CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR,(size_t) length,(void *) pixels,
     &status);
   if (status == CL_SUCCESS)
     return(info);
-  LockSemaphoreInfo(openCL_lock);
-  device->requested--;
-  UnlockSemaphoreInfo(openCL_lock);
-  return((MagickCLCacheInfo) RelinquishMagickMemory(info));
+  DestroyMagickCLCacheInfo(info);
+  return((MagickCLCacheInfo) NULL);
 }
 
 /*
@@ -725,16 +750,12 @@ static void LoadOpenCLDeviceBenchmark(MagickCLEnv clEnv,const char *xml)
   MagickCLDeviceBenchmark
     *device_benchmark;
 
-  MagickStatusType
-    status;
-
   size_t
     i,
     extent;
 
   if (xml == (char *) NULL)
     return;
-  status=MagickTrue;
   device_benchmark=(MagickCLDeviceBenchmark *) NULL;
   token=AcquireString(xml);
   extent=strlen(token)+MagickPathExtent;
@@ -805,6 +826,8 @@ static void LoadOpenCLDeviceBenchmark(MagickCLEnv clEnv,const char *xml)
 
         device_benchmark->platform_name=RelinquishMagickMemory(
           device_benchmark->platform_name);
+        device_benchmark->vendor_name=RelinquishMagickMemory(
+          device_benchmark->vendor_name);
         device_benchmark->name=RelinquishMagickMemory(device_benchmark->name);
         device_benchmark->version=RelinquishMagickMemory(
           device_benchmark->version);
@@ -858,6 +881,8 @@ static void LoadOpenCLDeviceBenchmark(MagickCLEnv clEnv,const char *xml)
       case 'V':
       case 'v':
       {
+        if (LocaleCompare((char *) keyword,"vendor") == 0)
+          device_benchmark->vendor_name=ConstantString(token);
         if (LocaleCompare((char *) keyword,"version") == 0)
           device_benchmark->version=ConstantString(token);
         break;
@@ -885,24 +910,19 @@ static MagickBooleanType CanWriteProfileToFile(const char *filename)
   return(MagickTrue);
 }
 
-static MagickBooleanType LoadOpenCLBenchmarks(MagickCLEnv clEnv,
-  ExceptionInfo *exception)
+static MagickBooleanType LoadOpenCLBenchmarks(MagickCLEnv clEnv)
 {
   char
     filename[MagickPathExtent];
 
-  const StringInfo
+  StringInfo
     *option;
-
-  LinkedListInfo
-    *options;
 
   size_t
     i;
 
   (void) FormatLocaleString(filename,MagickPathExtent,"%s%s%s",
-    GetOpenCLCacheDirectory(),DirectorySeparator,
-    IMAGEMAGICK_PROFILE_FILE);
+    GetOpenCLCacheDirectory(),DirectorySeparator,IMAGEMAGICK_PROFILE_FILE);
 
   /*
     We don't run the benchmark when we can not write out a device profile. The
@@ -919,19 +939,13 @@ static MagickBooleanType LoadOpenCLBenchmarks(MagickCLEnv clEnv,
       return(MagickFalse);
     }
 
-  options=GetConfigureOptions(filename,exception);
-  option=(const StringInfo *) GetNextValueInLinkedList(options);
-  while (option != (const StringInfo *) NULL)
-  {
-    LoadOpenCLDeviceBenchmark(clEnv,(const char *) GetStringInfoDatum(
-      option));
-    option=(const StringInfo *) GetNextValueInLinkedList(options);
-  }
-  options=DestroyConfigureOptions(options);
+  option=ConfigureFileToStringInfo(filename);
+  LoadOpenCLDeviceBenchmark(clEnv,(const char *) GetStringInfoDatum(option));
+  option=DestroyStringInfo(option);
   return(MagickTrue);
 }
 
-static void AutoSelectOpenCLDevices(MagickCLEnv clEnv,ExceptionInfo *exception)
+static void AutoSelectOpenCLDevices(MagickCLEnv clEnv)
 {
   const char
     *option;
@@ -960,7 +974,7 @@ static void AutoSelectOpenCLDevices(MagickCLEnv clEnv,ExceptionInfo *exception)
         }
     }
 
-  if (LoadOpenCLBenchmarks(clEnv,exception) == MagickFalse)
+  if (LoadOpenCLBenchmarks(clEnv) == MagickFalse)
     return;
 
   benchmark=MagickFalse;
@@ -1142,9 +1156,10 @@ static void CacheOpenCLBenchmarks(MagickCLEnv clEnv)
       continue;
 
     if (device->score != MAGICKCORE_OPENCL_UNDEFINED_SCORE)
-      fprintf(cache_file,"  <device platform=\"%s\" name=\"%s\" version=\"%s\"\
- maxClockFrequency=\"%d\" maxComputeUnits=\"%d\" score=\"%.4g\"/>\n",
-        device->platform_name,device->name,device->version,
+      fprintf(cache_file,"  <device platform=\"%s\" vendor=\"%s\" name=\"%s\"\
+ version=\"%s\" maxClockFrequency=\"%d\" maxComputeUnits=\"%d\"\
+ score=\"%.4g\"/>\n",
+        device->platform_name,device->vendor_name,device->name,device->version,
         (int)device->max_clock_frequency,(int)device->max_compute_units,
         device->score);
   }
@@ -1167,7 +1182,7 @@ static void BenchmarkOpenCLDevices(MagickCLEnv clEnv)
 
   testEnv=AcquireMagickCLEnv();
   testEnv->library=openCL_library;
-  testEnv->devices=(MagickCLDevice *) AcquireMagickMemory(
+  testEnv->devices=(MagickCLDevice *) AcquireCriticalMemory(
     sizeof(MagickCLDevice));
   testEnv->number_devices=1;
   testEnv->benchmark_thread_id=GetMagickThreadId();
@@ -1253,8 +1268,13 @@ static void CacheOpenCLKernel(MagickCLDevice device,char *filename,
     CL_PROGRAM_BINARY_SIZES,sizeof(size_t),&binaryProgramSize,NULL);
   if (status != CL_SUCCESS)
     return;
-
   binaryProgram=(unsigned char*) AcquireMagickMemory(binaryProgramSize);
+  if (binaryProgram == (unsigned char *) NULL)
+    {
+      (void) ThrowMagickException(exception,GetMagickModule(),
+        ResourceLimitError,"MemoryAllocationFailed","`%s'",filename);
+      return;
+    }
   status=openCL_library->clGetProgramInfo(device->program,
     CL_PROGRAM_BINARIES,sizeof(unsigned char*),&binaryProgram,NULL);
   if (status == CL_SUCCESS)
@@ -1299,7 +1319,7 @@ static void LogOpenCLBuildFailure(MagickCLDevice device,const char *kernel,
     *log;
 
   size_t
-    logSize;
+    log_size;
 
   (void) FormatLocaleString(filename,MagickPathExtent,"%s%s%s",
     GetOpenCLCacheDirectory(),DirectorySeparator,"magick_badcl.cl");
@@ -1308,16 +1328,17 @@ static void LogOpenCLBuildFailure(MagickCLDevice device,const char *kernel,
   (void) BlobToFile(filename,kernel,strlen(kernel),exception);
 
   openCL_library->clGetProgramBuildInfo(device->program,device->deviceID,
-    CL_PROGRAM_BUILD_LOG,0,NULL,&logSize);
-  log=(char*)AcquireMagickMemory(logSize);
+    CL_PROGRAM_BUILD_LOG,0,NULL,&log_size);
+  log=(char*)AcquireCriticalMemory(log_size);
   openCL_library->clGetProgramBuildInfo(device->program,device->deviceID,
-    CL_PROGRAM_BUILD_LOG,logSize,log,&logSize);
+    CL_PROGRAM_BUILD_LOG,log_size,log,&log_size);
 
   (void) FormatLocaleString(filename,MagickPathExtent,"%s%s%s",
     GetOpenCLCacheDirectory(),DirectorySeparator,"magick_badcl.log");
 
   (void) remove_utf8(filename);
-  (void) BlobToFile(filename,log,logSize,exception);
+  (void) BlobToFile(filename,log,log_size,exception);
+  log=(char*)RelinquishMagickMemory(log);
 }
 
 static MagickBooleanType CompileOpenCLKernel(MagickCLDevice device,
@@ -1351,7 +1372,7 @@ static MagickBooleanType CompileOpenCLKernel(MagickCLDevice device,
   }
   (void) FormatLocaleString(filename,MagickPathExtent,
     "%s%s%s_%s_%08x_%.20g.bin",GetOpenCLCacheDirectory(),
-    DirectorySeparator,"magick_opencl",deviceName,signature,
+    DirectorySeparator,"magick_opencl",deviceName,(unsigned int) signature,
     (double) sizeof(char*)*8);
   loaded=LoadCachedOpenCLKernel(device,filename);
   if (loaded == MagickFalse)
@@ -1381,6 +1402,50 @@ static MagickBooleanType CompileOpenCLKernel(MagickCLDevice device,
   return(MagickTrue);
 }
 
+static cl_event* CopyOpenCLEvents(MagickCLCacheInfo first,
+  MagickCLCacheInfo second,cl_uint *event_count)
+{
+  cl_event
+    *events;
+
+  register size_t
+    i;
+
+  size_t
+    j;
+
+  assert(first != (MagickCLCacheInfo) NULL);
+  assert(event_count != (cl_uint *) NULL);
+  events=(cl_event *) NULL;
+  LockSemaphoreInfo(first->events_semaphore);
+  if (second != (MagickCLCacheInfo) NULL)
+    LockSemaphoreInfo(second->events_semaphore);
+  *event_count=first->event_count;
+  if (second != (MagickCLCacheInfo) NULL)
+    *event_count+=second->event_count;
+  if (*event_count > 0)
+    {
+      events=AcquireQuantumMemory(*event_count,sizeof(*events));
+      if (events == (cl_event *) NULL)
+        *event_count=0;
+      else
+        {
+          j=0;
+          for (i=0; i < first->event_count; i++, j++)
+            events[j]=first->events[i];
+          if (second != (MagickCLCacheInfo) NULL)
+            {
+              for (i=0; i < second->event_count; i++, j++)
+                events[j]=second->events[i];
+            }
+        }
+    }
+  UnlockSemaphoreInfo(first->events_semaphore);
+  if (second != (MagickCLCacheInfo) NULL)
+    UnlockSemaphoreInfo(second->events_semaphore);
+  return(events);
+}
+
 /*
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %                                                                             %
@@ -1408,19 +1473,27 @@ MagickPrivate MagickCLCacheInfo CopyMagickCLCacheInfo(MagickCLCacheInfo info)
   cl_command_queue
     queue;
 
+  cl_event
+    *events;
+
+  cl_uint
+    event_count;
+
   Quantum
     *pixels;
 
   if (info == (MagickCLCacheInfo) NULL)
     return((MagickCLCacheInfo) NULL);
-  if (info->event_count > 0)
+  events=CopyOpenCLEvents(info,(MagickCLCacheInfo) NULL,&event_count);
+  if (events != (cl_event *) NULL)
     {
       queue=AcquireOpenCLCommandQueue(info->device);
       pixels=openCL_library->clEnqueueMapBuffer(queue,info->buffer,CL_TRUE,
-        CL_MAP_READ | CL_MAP_WRITE,0,info->length,info->event_count,
-        info->events,(cl_event *) NULL,(cl_int *) NULL);
+        CL_MAP_READ | CL_MAP_WRITE,0,info->length,event_count,events,
+        (cl_event *) NULL,(cl_int *) NULL);
       assert(pixels == info->pixels);
       ReleaseOpenCLCommandQueue(info->device,queue);
+      events=(cl_event *) RelinquishMagickMemory(events);
     }
   return(RelinquishMagickCLCacheInfo(info,MagickFalse));
 }
@@ -1565,10 +1638,17 @@ MagickPrivate void DumpOpenCLProfileData()
 %
 */
 
-static void RegisterCacheEvent(MagickCLCacheInfo info,cl_event event)
+static MagickBooleanType RegisterCacheEvent(MagickCLCacheInfo info,
+  cl_event event)
 {
   assert(info != (MagickCLCacheInfo) NULL);
   assert(event != (cl_event) NULL);
+  if (openCL_library->clRetainEvent(event) != CL_SUCCESS)
+    {
+      openCL_library->clWaitForEvents(1,&event);
+      return(MagickFalse);
+    }
+  LockSemaphoreInfo(info->events_semaphore);
   if (info->events == (cl_event *) NULL)
     {
       info->events=AcquireMagickMemory(sizeof(*info->events));
@@ -1580,13 +1660,14 @@ static void RegisterCacheEvent(MagickCLCacheInfo info,cl_event event)
   if (info->events == (cl_event *) NULL)
     ThrowFatalException(ResourceLimitFatalError,"MemoryAllocationFailed");
   info->events[info->event_count-1]=event;
-  openCL_library->clRetainEvent(event);
+  UnlockSemaphoreInfo(info->events_semaphore);
+  return(MagickTrue);
 }
 
 MagickPrivate MagickBooleanType EnqueueOpenCLKernel(cl_command_queue queue,
   cl_kernel kernel,cl_uint work_dim,const size_t *offset,const size_t *gsize,
   const size_t *lsize,const Image *input_image,const Image *output_image,
-  ExceptionInfo *exception)
+  MagickBooleanType flush,ExceptionInfo *exception)
 {
   CacheInfo
     *output_info,
@@ -1606,38 +1687,28 @@ MagickPrivate MagickBooleanType EnqueueOpenCLKernel(cl_command_queue queue,
   input_info=(CacheInfo *) input_image->cache;
   assert(input_info != (CacheInfo *) NULL);
   assert(input_info->opencl != (MagickCLCacheInfo) NULL);
-  event_count=input_info->opencl->event_count;
-  events=input_info->opencl->events;
   output_info=(CacheInfo *) NULL;
-  if (output_image != (const Image *) NULL)
+  if (output_image == (const Image *) NULL)
+    events=CopyOpenCLEvents(input_info->opencl,(MagickCLCacheInfo) NULL,
+      &event_count);
+  else
     {
       output_info=(CacheInfo *) output_image->cache;
       assert(output_info != (CacheInfo *) NULL);
       assert(output_info->opencl != (MagickCLCacheInfo) NULL);
-      if (output_info->opencl->event_count > 0)
-        {
-          ssize_t
-            i;
-
-          event_count+=output_info->opencl->event_count;
-          events=AcquireQuantumMemory(event_count,sizeof(*events));
-          if (events == (cl_event *) NULL)
-            return(MagickFalse);
-          for (i=0; i < (ssize_t) event_count; i++)
-          {
-            if (i < (ssize_t) input_info->opencl->event_count)
-              events[i]=input_info->opencl->events[i];
-            else
-              events[i]=output_info->opencl->events[i-
-                input_info->opencl->event_count];
-          }
-        }
+      events=CopyOpenCLEvents(input_info->opencl,output_info->opencl,
+        &event_count);
     }
   status=openCL_library->clEnqueueNDRangeKernel(queue,kernel,work_dim,offset,
     gsize,lsize,event_count,events,&event);
-  if ((output_info != (CacheInfo *) NULL) &&
-      (output_info->opencl->event_count > 0))
-    events=(cl_event *) RelinquishMagickMemory(events);
+  /* This can fail due to memory issues and calling clFinish might help. */
+  if ((status != CL_SUCCESS) && (event_count > 0))
+    {
+      openCL_library->clFinish(queue);
+      status=openCL_library->clEnqueueNDRangeKernel(queue,kernel,work_dim,
+        offset,gsize,lsize,event_count,events,&event);
+    }
+  events=(cl_event *) RelinquishMagickMemory(events);
   if (status != CL_SUCCESS)
     {
       (void) OpenCLThrowMagickException(input_info->opencl->device,exception,
@@ -1645,11 +1716,15 @@ MagickPrivate MagickBooleanType EnqueueOpenCLKernel(cl_command_queue queue,
         "clEnqueueNDRangeKernel failed.","'%s'",".");
       return(MagickFalse);
     }
+  if (flush != MagickFalse)
+    openCL_library->clFlush(queue);
   if (RecordProfileData(input_info->opencl->device,kernel,event) == MagickFalse)
     {
-      RegisterCacheEvent(input_info->opencl,event);
-      if (output_info != (CacheInfo *) NULL)
-        RegisterCacheEvent(output_info->opencl,event);
+      if (RegisterCacheEvent(input_info->opencl,event) != MagickFalse)
+        {
+          if (output_info != (CacheInfo *) NULL)
+            (void) RegisterCacheEvent(output_info->opencl,event);
+        }
     }
   openCL_library->clReleaseEvent(event);
   return(MagickTrue);
@@ -1788,6 +1863,35 @@ MagickExport const char *GetOpenCLDeviceName(const MagickCLDevice device)
   if (device == (MagickCLDevice) NULL)
     return((const char *) NULL);
   return(device->name);
+}
+
+/*
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%                                                                             %
+%                                                                             %
+%                                                                             %
+%   G e t O p e n C L D e v i c e V e n d o r N a m e                         %
+%                                                                             %
+%                                                                             %
+%                                                                             %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%  GetOpenCLDeviceVendorName() returns the vendor name of the device.
+%
+%  The format of the GetOpenCLDeviceVendorName method is:
+%
+%      const char *GetOpenCLDeviceVendorName(const MagickCLDevice device)
+%
+%  A description of each parameter follows:
+%
+%    o device: the OpenCL device.
+*/
+
+MagickExport const char *GetOpenCLDeviceVendorName(const MagickCLDevice device)
+{
+  if (device == (MagickCLDevice) NULL)
+    return((const char *) NULL);
+  return(device->vendor_name);
 }
 
 /*
@@ -2215,7 +2319,7 @@ static void LoadOpenCLDevices(MagickCLEnv clEnv)
       continue;
 
     status=clEnv->library->clGetDeviceIDs(platforms[i],CL_DEVICE_TYPE_CPU | 
-      CL_DEVICE_TYPE_GPU,clEnv->number_devices,devices,&number_devices);
+      CL_DEVICE_TYPE_GPU,(cl_uint) clEnv->number_devices,devices,&number_devices);
     if (status != CL_SUCCESS)
       continue;
 
@@ -2241,20 +2345,27 @@ static void LoadOpenCLDevices(MagickCLEnv clEnv)
 
       openCL_library->clGetPlatformInfo(platforms[i],CL_PLATFORM_NAME,0,NULL,
         &length);
-      device->platform_name=AcquireQuantumMemory(length,
+      device->platform_name=AcquireCriticalMemory(length*
         sizeof(*device->platform_name));
       openCL_library->clGetPlatformInfo(platforms[i],CL_PLATFORM_NAME,length,
         device->platform_name,NULL);
 
+      openCL_library->clGetPlatformInfo(platforms[i],CL_PLATFORM_VENDOR,0,NULL,
+        &length);
+      device->vendor_name=AcquireCriticalMemory(length*
+        sizeof(*device->vendor_name));
+      openCL_library->clGetPlatformInfo(platforms[i],CL_PLATFORM_VENDOR,length,
+        device->vendor_name,NULL);
+
       openCL_library->clGetDeviceInfo(devices[j],CL_DEVICE_NAME,0,NULL,
         &length);
-      device->name=AcquireQuantumMemory(length,sizeof(*device->name));
+      device->name=AcquireCriticalMemory(length*sizeof(*device->name));
       openCL_library->clGetDeviceInfo(devices[j],CL_DEVICE_NAME,length,
         device->name,NULL);
 
       openCL_library->clGetDeviceInfo(devices[j],CL_DRIVER_VERSION,0,NULL,
         &length);
-      device->version=AcquireQuantumMemory(length,sizeof(*device->version));
+      device->version=AcquireCriticalMemory(length*sizeof(*device->version));
       openCL_library->clGetDeviceInfo(devices[j],CL_DRIVER_VERSION,length,
         device->version,NULL);
 
@@ -2293,7 +2404,7 @@ MagickPrivate MagickBooleanType InitializeOpenCL(MagickCLEnv clEnv,
       clEnv->library=openCL_library;
       LoadOpenCLDevices(clEnv);
       if (clEnv->number_devices > 0)
-        AutoSelectOpenCLDevices(clEnv,exception);
+        AutoSelectOpenCLDevices(clEnv);
     }
   clEnv->initialized=MagickTrue;
   UnlockSemaphoreInfo(clEnv->lock);
@@ -2332,23 +2443,22 @@ void *OsLibraryGetFunctionAddress(void *library,const char *functionName)
 
 static MagickBooleanType BindOpenCLFunctions()
 {
-  void
-    *library;
-
 #ifdef MAGICKCORE_OPENCL_MACOSX
 #define BIND(X) openCL_library->X= &X;
 #else
   (void) ResetMagickMemory(openCL_library,0,sizeof(MagickLibrary));
 #ifdef MAGICKCORE_WINDOWS_SUPPORT
-  library=(void *)LoadLibraryA("OpenCL.dll");
+  openCL_library->library=(void *)LoadLibraryA("OpenCL.dll");
 #else
-  library=(void *)dlopen("libOpenCL.so", RTLD_NOW);
+  openCL_library->library=(void *)dlopen("libOpenCL.so", RTLD_NOW);
 #endif
-
 #define BIND(X) \
-  if ((openCL_library->X=(MAGICKpfn_##X)OsLibraryGetFunctionAddress(library,#X)) == NULL) \
+  if ((openCL_library->X=(MAGICKpfn_##X)OsLibraryGetFunctionAddress(openCL_library->library,#X)) == NULL) \
     return(MagickFalse);
 #endif
+
+  if (openCL_library->library == (void*) NULL)
+    return(MagickFalse);
 
   BIND(clGetPlatformIDs);
   BIND(clGetPlatformInfo);
@@ -2358,6 +2468,7 @@ static MagickBooleanType BindOpenCLFunctions()
 
   BIND(clCreateBuffer);
   BIND(clReleaseMemObject);
+  BIND(clRetainMemObject);
 
   BIND(clCreateContext);
   BIND(clReleaseContext);
@@ -2384,6 +2495,7 @@ static MagickBooleanType BindOpenCLFunctions()
   BIND(clEnqueueUnmapMemObject);
   BIND(clEnqueueNDRangeKernel);
 
+  BIND(clGetEventInfo);
   BIND(clWaitForEvents);
   BIND(clReleaseEvent);
   BIND(clRetainEvent);
@@ -2420,11 +2532,11 @@ static MagickBooleanType LoadOpenCLLibrary(void)
 %                                                                             %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
-%  AnnotateComponentTerminus() destroys the annotate component.
+%  OpenCLTerminus() destroys the OpenCL component.
 %
-%  The format of the AnnotateComponentTerminus method is:
+%  The format of the OpenCLTerminus method is:
 %
-%      AnnotateComponentTerminus(void)
+%      OpenCLTerminus(void)
 %
 */
 
@@ -2440,7 +2552,11 @@ MagickPrivate void OpenCLTerminus()
   if (openCL_lock != (SemaphoreInfo *) NULL)
     RelinquishSemaphoreInfo(&openCL_lock);
   if (openCL_library != (MagickLibrary *) NULL)
-    openCL_library=(MagickLibrary *)RelinquishMagickMemory(openCL_library);
+    {
+      if (openCL_library->library != (void *) NULL)
+        (void) lt_dlclose(openCL_library->library);
+      openCL_library=(MagickLibrary *) RelinquishMagickMemory(openCL_library);
+    }
 }
 
 /*
@@ -2742,19 +2858,6 @@ MagickPrivate void ReleaseOpenCLDevice(MagickCLDevice device)
 %    o relinquish_pixels: the pixels will be relinquish when set to true.
 %
 */
-static void DestroyMagickCLCacheInfo(MagickCLCacheInfo info)
-{
-  ssize_t
-    i;
-
-  for (i=0; i < (ssize_t) info->event_count; i++)
-    openCL_library->clReleaseEvent(info->events[i]);
-  info->events=(cl_event *) RelinquishMagickMemory(info->events);
-  if (info->buffer != (cl_mem) NULL)
-    openCL_library->clReleaseMemObject(info->buffer);
-  ReleaseOpenCLDevice(info->device);
-  RelinquishMagickMemory(info);
-}
 
 static void CL_API_CALL DestroyMagickCLCacheInfoAndPixels(
   cl_event magick_unused(event),
@@ -2763,12 +2866,36 @@ static void CL_API_CALL DestroyMagickCLCacheInfoAndPixels(
   MagickCLCacheInfo
     info;
 
+  Quantum
+    *pixels;
+
+  ssize_t
+    i;
+
   magick_unreferenced(event);
   magick_unreferenced(event_command_exec_status);
   info=(MagickCLCacheInfo) user_data;
-  (void) RelinquishAlignedMemory(info->pixels);
-  RelinquishMagickResource(MemoryResource,info->length);
+  for (i=(ssize_t)info->event_count-1; i >= 0; i--)
+  {
+    cl_int
+      event_status;
+  
+    cl_uint
+      status;
+
+    status=openCL_library->clGetEventInfo(info->events[i],
+      CL_EVENT_COMMAND_EXECUTION_STATUS,sizeof(event_status),&event_status, 
+      NULL);
+    if ((status == CL_SUCCESS) && (event_status != CL_COMPLETE))
+      {
+        openCL_library->clSetEventCallback(info->events[i],CL_COMPLETE,
+          &DestroyMagickCLCacheInfoAndPixels,info);
+        return;
+      }
+  }
+  pixels=info->pixels;
   DestroyMagickCLCacheInfo(info);
+  (void) RelinquishAlignedMemory(pixels);
 }
 
 MagickPrivate MagickCLCacheInfo RelinquishMagickCLCacheInfo(
@@ -2777,13 +2904,7 @@ MagickPrivate MagickCLCacheInfo RelinquishMagickCLCacheInfo(
   if (info == (MagickCLCacheInfo) NULL)
     return((MagickCLCacheInfo) NULL);
   if (relinquish_pixels != MagickFalse)
-    {
-      if (info->event_count > 0)
-        openCL_library->clSetEventCallback(info->events[info->event_count-1],
-          CL_COMPLETE,&DestroyMagickCLCacheInfoAndPixels,info);
-      else
-        DestroyMagickCLCacheInfoAndPixels((cl_event) NULL,0,info);
-    }
+    DestroyMagickCLCacheInfoAndPixels((cl_event) NULL,0,info);
   else
     DestroyMagickCLCacheInfo(info);
   return((MagickCLCacheInfo) NULL);
@@ -2818,6 +2939,7 @@ static MagickCLDevice RelinquishMagickCLDevice(MagickCLDevice device)
     return((MagickCLDevice) NULL);
 
   device->platform_name=RelinquishMagickMemory(device->platform_name);
+  device->vendor_name=RelinquishMagickMemory(device->vendor_name);
   device->name=RelinquishMagickMemory(device->name);
   device->version=RelinquishMagickMemory(device->version);
   if (device->program != (cl_program) NULL)

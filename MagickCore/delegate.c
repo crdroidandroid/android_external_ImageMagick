@@ -16,13 +16,13 @@
 %                               October 1998                                  %
 %                                                                             %
 %                                                                             %
-%  Copyright 1999-2016 ImageMagick Studio LLC, a non-profit organization      %
+%  Copyright 1999-2017 ImageMagick Studio LLC, a non-profit organization      %
 %  dedicated to making software imaging solutions freely available.           %
 %                                                                             %
 %  You may not use this file except in compliance with the License.  You may  %
 %  obtain a copy of the License at                                            %
 %                                                                             %
-%    http://www.imagemagick.org/script/license.php                            %
+%    https://www.imagemagick.org/script/license.php                           %
 %                                                                             %
 %  Unless required by applicable law or agreed to in writing, software        %
 %  distributed under the License is distributed on an "AS IS" BASIS,          %
@@ -61,6 +61,7 @@
 #include "MagickCore/linked-list.h"
 #include "MagickCore/list.h"
 #include "MagickCore/memory_.h"
+#include "MagickCore/memory-private.h"
 #include "MagickCore/nt-base-private.h"
 #include "MagickCore/option.h"
 #include "MagickCore/policy.h"
@@ -185,8 +186,6 @@ static LinkedListInfo *AcquireDelegateCache(const char *filename,
     status;
 
   cache=NewLinkedList(0);
-  if (cache == (LinkedListInfo *) NULL)
-    ThrowFatalException(ResourceLimitFatalError,"MemoryAllocationFailed");
   status=MagickTrue;
 #if !defined(MAGICKCORE_ZERO_CONFIGURATION_SUPPORT)
   {
@@ -1819,9 +1818,9 @@ MagickExport MagickBooleanType InvokeDelegate(ImageInfo *image_info,
               count;
 
             /*
-              Wait for input file to 'disappear', or maximum 10 seconds.
+              Wait for input file to 'disappear', or maximum 2 seconds.
             */
-            count=100;
+            count=20;
             while ((count-- > 0) && (access_utf8(image->filename,F_OK) == 0))
               (void) MagickDelay(100);  /* sleep 0.1 seconds */
           }
@@ -2095,10 +2094,8 @@ static MagickBooleanType LoadDelegateCache(LinkedListInfo *cache,
         /*
           Delegate element.
         */
-        delegate_info=(DelegateInfo *) AcquireMagickMemory(
+        delegate_info=(DelegateInfo *) AcquireCriticalMemory(
           sizeof(*delegate_info));
-        if (delegate_info == (DelegateInfo *) NULL)
-          ThrowFatalException(ResourceLimitFatalError,"MemoryAllocationFailed");
         (void) ResetMagickMemory(delegate_info,0,sizeof(*delegate_info));
         delegate_info->path=ConstantString(filename);
         delegate_info->thread_support=MagickTrue;
@@ -2107,7 +2104,8 @@ static MagickBooleanType LoadDelegateCache(LinkedListInfo *cache,
       }
     if (delegate_info == (DelegateInfo *) NULL)
       continue;
-    if (LocaleCompare(keyword,"/>") == 0)
+    if ((LocaleCompare(keyword,"/>") == 0) ||
+        (LocaleCompare(keyword,"</policy>") == 0))
       {
         status=AppendValueToLinkedList(cache,delegate_info);
         if (status == MagickFalse)

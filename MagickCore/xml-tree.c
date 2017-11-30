@@ -23,13 +23,13 @@
 %                               December 2004                                 %
 %                                                                             %
 %                                                                             %
-%  Copyright 1999-2016 ImageMagick Studio LLC, a non-profit organization      %
+%  Copyright 1999-2017 ImageMagick Studio LLC, a non-profit organization      %
 %  dedicated to making software imaging solutions freely available.           %
 %                                                                             %
 %  You may not use this file except in compliance with the License.  You may  %
 %  obtain a copy of the License at                                            %
 %                                                                             %
-%    http://www.imagemagick.org/script/license.php                            %
+%    https://www.imagemagick.org/script/license.php                           %
 %                                                                             %
 %  Unless required by applicable law or agreed to in writing, software        %
 %  distributed under the License is distributed on an "AS IS" BASIS,          %
@@ -55,6 +55,7 @@
 #include "MagickCore/image-private.h"
 #include "MagickCore/log.h"
 #include "MagickCore/memory_.h"
+#include "MagickCore/memory-private.h"
 #include "MagickCore/semaphore.h"
 #include "MagickCore/string_.h"
 #include "MagickCore/string-private.h"
@@ -1280,7 +1281,7 @@ MagickPrivate XMLTreeInfo *InsertTagIntoXMLTree(XMLTreeInfo *xml_info,
 %
 %  A description of each parameter follows:
 %
-%    o xml:  The XML string.
+%    o xml:  A null-terminated XML string.
 %
 %    o exception: return any errors or warnings in this structure.
 %
@@ -1634,10 +1635,8 @@ static void ParseProcessingInstructions(XMLTreeRoot *root,char *xml,
     }
   if (root->processing_instructions[0] == (char **) NULL)
     {
-      root->processing_instructions=(char ***) AcquireMagickMemory(sizeof(
+      root->processing_instructions=(char ***) AcquireCriticalMemory(sizeof(
         *root->processing_instructions));
-      if (root->processing_instructions ==(char ***) NULL)
-        ThrowFatalException(ResourceLimitFatalError,"MemoryAllocationFailed");
       *root->processing_instructions=(char **) NULL;
     }
   i=0;
@@ -2732,7 +2731,7 @@ static char *XMLTreeTagToXML(XMLTreeInfo *xml_info,char **source,size_t *length,
   if (*xml_info->content != '\0')
     *length+=FormatLocaleString(*source+(*length),*extent,"</%s>",
       xml_info->tag);
-  while ((content[offset] != '\0') && (offset < xml_info->offset))
+  while ((offset < xml_info->offset) && (content[offset] != '\0'))
     offset++;
   if (xml_info->ordered != (XMLTreeInfo *) NULL)
     content=XMLTreeTagToXML(xml_info->ordered,source,length,extent,offset,

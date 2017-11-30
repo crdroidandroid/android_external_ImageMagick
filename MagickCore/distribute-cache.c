@@ -22,13 +22,13 @@
 %                                January 2013                                 %
 %                                                                             %
 %                                                                             %
-%  Copyright 1999-2016 ImageMagick Studio LLC, a non-profit organization      %
+%  Copyright 1999-2017 ImageMagick Studio LLC, a non-profit organization      %
 %  dedicated to making software imaging solutions freely available.           %
 %                                                                             %
 %  You may not use this file except in compliance with the License.  You may  %
 %  obtain a copy of the License at                                            %
 %                                                                             %
-%    http://www.imagemagick.org/script/license.php                            %
+%    https://www.imagemagick.org/script/license.php                           %
 %                                                                             %
 %  Unless required by applicable law or agreed to in writing, software        %
 %  distributed under the License is distributed on an "AS IS" BASIS,          %
@@ -64,6 +64,7 @@
 #include "MagickCore/list.h"
 #include "MagickCore/locale_.h"
 #include "MagickCore/memory_.h"
+#include "MagickCore/memory-private.h"
 #include "MagickCore/nt-base-private.h"
 #include "MagickCore/pixel.h"
 #include "MagickCore/policy.h"
@@ -87,7 +88,7 @@
 #define SOCKET_TYPE int
 #define LENGTH_TYPE size_t
 #define MAGICKCORE_HAVE_DISTRIBUTE_CACHE
-#elif defined(MAGICKCORE_WINDOWS_SUPPORT)
+#elif defined(MAGICKCORE_WINDOWS_SUPPORT) && !defined(__MINGW32__)
 #define CHAR_TYPE_CAST (char *)
 #define CLOSE_SOCKET(socket) (void) closesocket(socket)
 #define HANDLER_RETURN_TYPE DWORD WINAPI
@@ -201,7 +202,7 @@ static int ConnectPixelCacheServer(const char *hostname,const int port,
     Connect to distributed pixel cache and get session key.
   */
   *session_key=0;
-  shared_secret=GetPolicyValue("shared-secret");
+  shared_secret=GetPolicyValue("cache:shared-secret");
   if (shared_secret == (char *) NULL)
     {
       shared_secret=DestroyString(shared_secret);
@@ -338,9 +339,8 @@ MagickPrivate DistributeCacheInfo *AcquireDistributeCacheInfo(
   /*
     Connect to the distributed pixel cache server.
   */
-  server_info=(DistributeCacheInfo *) AcquireMagickMemory(sizeof(*server_info));
-  if (server_info == (DistributeCacheInfo *) NULL)
-    ThrowFatalException(ResourceLimitFatalError,"MemoryAllocationFailed");
+  server_info=(DistributeCacheInfo *) AcquireCriticalMemory(
+    sizeof(*server_info));
   (void) ResetMagickMemory(server_info,0,sizeof(*server_info));
   server_info->signature=MagickCoreSignature;
   server_info->port=0;
@@ -805,7 +805,7 @@ static HANDLER_RETURN_TYPE DistributePixelCacheClient(void *socket)
   /*
     Distributed pixel cache client.
   */
-  shared_secret=GetPolicyValue("shared-secret");
+  shared_secret=GetPolicyValue("cache:shared-secret");
   if (shared_secret == (char *) NULL)
     ThrowFatalException(CacheFatalError,"shared secret expected");
   p=session;

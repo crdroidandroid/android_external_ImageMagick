@@ -16,13 +16,13 @@
 %                               March  2003                                   %
 %                                                                             %
 %                                                                             %
-%  Copyright 1999-2016 ImageMagick Studio LLC, a non-profit organization      %
+%  Copyright 1999-2017 ImageMagick Studio LLC, a non-profit organization      %
 %  dedicated to making software imaging solutions freely available.           %
 %                                                                             %
 %  You may not use this file except in compliance with the License.  You may  %
 %  obtain a copy of the License at                                            %
 %                                                                             %
-%    http://www.imagemagick.org/script/license.php                            %
+%    https://www.imagemagick.org/script/license.php                           %
 %                                                                             %
 %  Unless required by applicable law or agreed to in writing, software        %
 %  distributed under the License is distributed on an "AS IS" BASIS,          %
@@ -48,6 +48,7 @@
 #include "MagickCore/linked-list.h"
 #include "MagickCore/list.h"
 #include "MagickCore/memory_.h"
+#include "MagickCore/memory-private.h"
 #include "MagickCore/monitor.h"
 #include "MagickCore/monitor-private.h"
 #include "MagickCore/property.h"
@@ -190,9 +191,7 @@ static AESInfo *AcquireAESInfo(void)
   AESInfo
     *aes_info;
 
-  aes_info=(AESInfo *) AcquireMagickMemory(sizeof(*aes_info));
-  if (aes_info == (AESInfo *) NULL)
-    ThrowFatalException(ResourceLimitFatalError,"MemoryAllocationFailed");
+  aes_info=(AESInfo *) AcquireCriticalMemory(sizeof(*aes_info));
   (void) ResetMagickMemory(aes_info,0,sizeof(*aes_info));
   aes_info->blocksize=AESBlocksize;
   aes_info->key=AcquireStringInfo(32);

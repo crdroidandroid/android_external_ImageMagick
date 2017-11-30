@@ -1,7 +1,7 @@
 // This may look like C code, but it is really -*- C++ -*-
 //
 // Copyright Bob Friesenhahn, 1999, 2000, 2001, 2002, 2003
-// Copyright Dirk Lemstra 2013-2016
+// Copyright Dirk Lemstra 2013-2017
 //
 // Implementation of Image
 //
@@ -265,8 +265,14 @@ Magick::Image::Image(const std::string &imageSpec_)
 
 Magick::Image::~Image()
 {
-  if (_imgRef->decrease() == 0)
-    delete _imgRef;
+  try
+  {
+    if (_imgRef->decrease() == 0)
+      delete _imgRef;
+  }
+  catch(Magick::Exception)
+  {
+  }
 
   _imgRef=(Magick::ImageRef *) NULL;
 }
@@ -296,7 +302,7 @@ bool Magick::Image::adjoin(void) const
   return(constOptions()->adjoin());
 }
 
-void Magick::Image::alpha(const bool matteFlag_)
+void Magick::Image::alpha(const bool alphaFlag_)
 {
   modifyImage();
 
@@ -305,12 +311,12 @@ void Magick::Image::alpha(const bool matteFlag_)
   // the image already has a matte channel but a matte channel is not
   // desired, then set the matte channel to opaque.
   GetPPException;
-  if ((matteFlag_ && !constImage()->alpha_trait) ||
-      (constImage()->alpha_trait && !matteFlag_))
+  if ((alphaFlag_ && !constImage()->alpha_trait) ||
+      (constImage()->alpha_trait && !alphaFlag_))
     SetImageAlpha(image(),OpaqueAlpha,exceptionInfo);
   ThrowImageException;
 
-  image()->alpha_trait=matteFlag_ ? BlendPixelTrait : UndefinedPixelTrait;
+  image()->alpha_trait=alphaFlag_ ? BlendPixelTrait : UndefinedPixelTrait;
 }
 
 bool Magick::Image::alpha(void) const
@@ -321,27 +327,27 @@ bool Magick::Image::alpha(void) const
     return(false);
 }
 
-void Magick::Image::alphaColor(const Color &alphaColor_)
+void Magick::Image::matteColor(const Color &matteColor_)
 {
   modifyImage();
 
-  if (alphaColor_.isValid())
+  if (matteColor_.isValid())
     {
-      image()->alpha_color=alphaColor_;
-      options()->alphaColor(alphaColor_);
+      image()->matte_color=matteColor_;
+      options()->matteColor(matteColor_);
     }
   else
     {
       // Set to default matte color
       Color tmpColor("#BDBDBD");
-      image()->alpha_color=tmpColor;
-      options()->alphaColor(tmpColor);
+      image()->matte_color=tmpColor;
+      options()->matteColor(tmpColor);
     }
 }
 
-Magick::Color Magick::Image::alphaColor(void) const
+Magick::Color Magick::Image::matteColor(void) const
 {
-  return(Color(constImage()->alpha_color));
+  return(Color(constImage()->matte_color));
 }
 
 void Magick::Image::animationDelay(const size_t delay_)
@@ -992,7 +998,7 @@ void Magick::Image::highlightColor(const Color color_)
     value;
 
   value=color_;
-  artifact("highlight-color",value);
+  artifact("compare:highlight-color",value);
 }
 
 void Magick::Image::iccColorProfile(const Magick::Blob &colorProfile_)
@@ -1127,7 +1133,7 @@ void Magick::Image::lowlightColor(const Color color_)
     value;
 
   value=color_;
-  artifact("lowlight-color",value);
+  artifact("compare:lowlight-color",value);
 }
 
 void Magick::Image::magick(const std::string &magick_)
@@ -1154,6 +1160,15 @@ std::string Magick::Image::magick(void) const
     return(std::string(constImage()->magick));
 
   return(constOptions()->magick());
+}
+
+void Magick::Image::masklightColor(const Color color_)
+{
+  std::string
+    value;
+
+  value=color_;
+  artifact("compare:masklight-color",value);
 }
 
 double Magick::Image::meanErrorPerPixel(void) const
@@ -1964,6 +1979,14 @@ std::string Magick::Image::artifact(const std::string &name_) const
   return(std::string());
 }
 
+void Magick::Image::attribute(const std::string name_,const char *value_)
+{
+  modifyImage();
+  GetPPException;
+  SetImageProperty(image(),name_.c_str(),value_,exceptionInfo);
+  ThrowImageException;
+}
+
 void Magick::Image::attribute(const std::string name_,const std::string value_)
 {
   modifyImage();
@@ -2037,6 +2060,14 @@ void Magick::Image::autoOrient(void)
   GetPPException;
   newImage=AutoOrientImage(constImage(),image()->orientation,exceptionInfo);
   replaceImage(newImage);
+  ThrowImageException;
+}
+
+void Magick::Image::autoThreshold(const AutoThresholdMethod method_)
+{
+  modifyImage();
+  GetPPException;
+  AutoThresholdImage(image(),method_, exceptionInfo);
   ThrowImageException;
 }
 
@@ -2170,6 +2201,20 @@ void Magick::Image::charcoal(const double radius_,const double sigma_)
 
   GetPPException;
   newImage=CharcoalImage(image(),radius_,sigma_,exceptionInfo);
+  replaceImage(newImage);
+  ThrowImageException;
+}
+
+void Magick::Image::charcoalChannel(const ChannelType channel_,
+  const double radius_,const double sigma_)
+{
+  MagickCore::Image
+    *newImage;
+
+  GetPPException;
+  GetAndSetPPChannelMask(channel_);
+  newImage=CharcoalImage(image(),radius_,sigma_,exceptionInfo);
+  RestorePPChannelMask;
   replaceImage(newImage);
   ThrowImageException;
 }
@@ -3509,6 +3554,19 @@ void Magick::Image::map(const Image &mapImage_,const bool dither_)
   options()->quantizeDither(dither_);
   RemapImage(options()->quantizeInfo(),image(),mapImage_.constImage(),
     exceptionInfo);
+  ThrowImageException;
+}
+
+void Magick::Image::meanShift(const size_t width_,const size_t height_,
+  const double color_distance_)
+{
+  MagickCore::Image
+    *newImage;
+
+  GetPPException;
+  newImage=MeanShiftImage(constImage(),width_,height_,color_distance_,
+    exceptionInfo);
+  replaceImage(newImage);
   ThrowImageException;
 }
 
@@ -5029,6 +5087,7 @@ void Magick::Image::read(MagickCore::Image *image,
       if (!quiet())
         throwExceptionExplicit(MagickCore::ImageWarning,
           "No image was loaded.");
+      return;
     }
   ThrowImageException;
 }

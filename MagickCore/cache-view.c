@@ -23,13 +23,13 @@
 %                               February 2000                                 %
 %                                                                             %
 %                                                                             %
-%  Copyright 1999-2016 ImageMagick Studio LLC, a non-profit organization      %
+%  Copyright 1999-2017 ImageMagick Studio LLC, a non-profit organization      %
 %  dedicated to making software imaging solutions freely available.           %
 %                                                                             %
 %  You may not use this file except in compliance with the License.  You may  %
 %  obtain a copy of the License at                                            %
 %                                                                             %
-%    http://www.imagemagick.org/script/license.php                            %
+%    https://www.imagemagick.org/script/license.php                           %
 %                                                                             %
 %  Unless required by applicable law or agreed to in writing, software        %
 %  distributed under the License is distributed on an "AS IS" BASIS,          %
@@ -732,7 +732,7 @@ MagickExport MagickBooleanType GetOneCacheViewAuthenticPixel(
     }
   for (i=0; i < (ssize_t) GetPixelChannels(cache_view->image); i++)
   {
-    PixelChannel channel=GetPixelChannelChannel(cache_view->image,i);
+    PixelChannel channel = GetPixelChannelChannel(cache_view->image,i);
     pixel[channel]=q[i];
   }
   return(MagickTrue);
@@ -805,7 +805,7 @@ MagickExport MagickBooleanType GetOneCacheViewVirtualPixel(
     }
   for (i=0; i < (ssize_t) GetPixelChannels(cache_view->image); i++)
   {
-    PixelChannel channel=GetPixelChannelChannel(cache_view->image,i);
+    PixelChannel channel = GetPixelChannelChannel(cache_view->image,i);
     pixel[channel]=p[i];
   }
   return(MagickTrue);
@@ -936,7 +936,7 @@ MagickExport MagickBooleanType GetOneCacheViewVirtualMethodPixel(
     }
   for (i=0; i < (ssize_t) GetPixelChannels(cache_view->image); i++)
   {
-    PixelChannel channel=GetPixelChannelChannel(cache_view->image,i);
+    PixelChannel channel = GetPixelChannelChannel(cache_view->image,i);
     pixel[channel]=p[i];
   }
   return(MagickTrue);

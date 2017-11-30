@@ -17,13 +17,13 @@
 %                                 July 1992                                   %
 %                                                                             %
 %                                                                             %
-%  Copyright 1999-2016 ImageMagick Studio LLC, a non-profit organization      %
+%  Copyright 1999-2017 ImageMagick Studio LLC, a non-profit organization      %
 %  dedicated to making software imaging solutions freely available.           %
 %                                                                             %
 %  You may not use this file except in compliance with the License.  You may  %
 %  obtain a copy of the License at                                            %
 %                                                                             %
-%    http://www.imagemagick.org/script/license.php                            %
+%    https://www.imagemagick.org/script/license.php                           %
 %                                                                             %
 %  Unless required by applicable law or agreed to in writing, software        %
 %  distributed under the License is distributed on an "AS IS" BASIS,          %
@@ -134,6 +134,8 @@ static int MagickDLLCall PostscriptDelegateMessage(void *handle,
       *messages=(char *) ResizeQuantumMemory(*messages,offset+length+1,
         sizeof(char *));
     }
+  if (*messages == (char *) NULL)
+    return(0);
   (void) memcpy(*messages+offset,message,length);
   (*messages)[length+offset] ='\0';
   return(length);
@@ -629,13 +631,18 @@ static Image *ReadPSImage(const ImageInfo *image_info,ExceptionInfo *exception)
         /*
           Read ICC profile.
         */
-        profile=AcquireStringInfo(65536);
+        profile=AcquireStringInfo(MagickPathExtent);
+        datum=GetStringInfoDatum(profile);
         for (i=0; (c=ProfileInteger(image,hex_digits)) != EOF; i++)
         {
-          SetStringInfoLength(profile,(size_t) i+1);
-          datum=GetStringInfoDatum(profile);
+          if (i >= (ssize_t) GetStringInfoLength(profile))
+            {
+              SetStringInfoLength(profile,(size_t) i << 1);
+              datum=GetStringInfoDatum(profile);
+            }
           datum[i]=(unsigned char) c;
         }
+        SetStringInfoLength(profile,(size_t) i+1);
         (void) SetImageProfile(image,"icc",profile,exception);
         profile=DestroyStringInfo(profile);
         continue;
@@ -652,6 +659,8 @@ static Image *ReadPSImage(const ImageInfo *image_info,ExceptionInfo *exception)
         if (count != 1)
           continue;
         length=extent;
+        if (length > GetBlobSize(image))
+          ThrowReaderException(CorruptImageError,"InsufficientImageDataInFile");
         profile=BlobToStringInfo((const void *) NULL,length);
         if (profile != (StringInfo *) NULL)
           {
@@ -719,8 +728,8 @@ static Image *ReadPSImage(const ImageInfo *image_info,ExceptionInfo *exception)
         /*
           Note spot names.
         */
-        (void) FormatLocaleString(property,MagickPathExtent,"ps:SpotColor-%.20g",
-          (double) (spotcolor++));
+        (void) FormatLocaleString(property,MagickPathExtent,
+          "ps:SpotColor-%.20g",(double) (spotcolor++));
         for (q=command; *q != '\0'; q++)
           if (isspace((int) (unsigned char) *q) != 0)
             break;
@@ -890,7 +899,8 @@ static Image *ReadPSImage(const ImageInfo *image_info,ExceptionInfo *exception)
           (IsStringTrue(option) != MagickFalse))
         (void) ConcatenateMagickString(options,"-dEPSCrop ",MagickPathExtent);
       if (fitPage != MagickFalse)
-        (void) ConcatenateMagickString(options,"-dEPSFitPage ",MagickPathExtent);
+        (void) ConcatenateMagickString(options,"-dEPSFitPage ",
+          MagickPathExtent);
     }
   (void) CopyMagickString(filename,read_info->filename,MagickPathExtent);
   (void) AcquireUniqueFilename(filename);
@@ -980,7 +990,8 @@ static Image *ReadPSImage(const ImageInfo *image_info,ExceptionInfo *exception)
     }
   do
   {
-    (void) CopyMagickString(postscript_image->filename,filename,MagickPathExtent);
+    (void) CopyMagickString(postscript_image->filename,filename,
+      MagickPathExtent);
     (void) CopyMagickString(postscript_image->magick,image->magick,
       MagickPathExtent);
     if (columns != 0)
@@ -1037,27 +1048,27 @@ ModuleExport size_t RegisterPSImage(void)
   entry->decoder=(DecodeImageHandler *) ReadPSImage;
   entry->encoder=(EncodeImageHandler *) WritePSImage;
   entry->magick=(IsImageFormatHandler *) IsPS;
+  entry->flags|=CoderDecoderSeekableStreamFlag;
   entry->flags^=CoderAdjoinFlag;
   entry->flags^=CoderBlobSupportFlag;
-  entry->flags|=CoderSeekableStreamFlag;
   entry->mime_type=ConstantString("application/postscript");
   (void) RegisterMagickInfo(entry);
   entry=AcquireMagickInfo("PS","EPS","Encapsulated PostScript");
   entry->decoder=(DecodeImageHandler *) ReadPSImage;
   entry->encoder=(EncodeImageHandler *) WritePSImage;
   entry->magick=(IsImageFormatHandler *) IsPS;
+  entry->flags|=CoderDecoderSeekableStreamFlag;
   entry->flags^=CoderAdjoinFlag;
   entry->flags^=CoderBlobSupportFlag;
-  entry->flags|=CoderSeekableStreamFlag;
   entry->mime_type=ConstantString("application/postscript");
   (void) RegisterMagickInfo(entry);
   entry=AcquireMagickInfo("PS","EPSF","Encapsulated PostScript");
   entry->decoder=(DecodeImageHandler *) ReadPSImage;
   entry->encoder=(EncodeImageHandler *) WritePSImage;
   entry->magick=(IsImageFormatHandler *) IsPS;
+  entry->flags|=CoderDecoderSeekableStreamFlag;
   entry->flags^=CoderAdjoinFlag;
   entry->flags^=CoderBlobSupportFlag;
-  entry->flags|=CoderSeekableStreamFlag;
   entry->mime_type=ConstantString("application/postscript");
   (void) RegisterMagickInfo(entry);
   entry=AcquireMagickInfo("PS","EPSI",
@@ -1065,9 +1076,9 @@ ModuleExport size_t RegisterPSImage(void)
   entry->decoder=(DecodeImageHandler *) ReadPSImage;
   entry->encoder=(EncodeImageHandler *) WritePSImage;
   entry->magick=(IsImageFormatHandler *) IsPS;
+  entry->flags|=CoderDecoderSeekableStreamFlag;
   entry->flags^=CoderAdjoinFlag;
   entry->flags^=CoderBlobSupportFlag;
-  entry->flags|=CoderSeekableStreamFlag;
   entry->mime_type=ConstantString("application/postscript");
   (void) RegisterMagickInfo(entry);
   entry=AcquireMagickInfo("PS","PS","PostScript");
@@ -1075,8 +1086,8 @@ ModuleExport size_t RegisterPSImage(void)
   entry->encoder=(EncodeImageHandler *) WritePSImage;
   entry->magick=(IsImageFormatHandler *) IsPS;
   entry->mime_type=ConstantString("application/postscript");
+  entry->flags|=CoderDecoderSeekableStreamFlag;
   entry->flags^=CoderBlobSupportFlag;
-  entry->flags|=CoderSeekableStreamFlag;
   (void) RegisterMagickInfo(entry);
   return(MagickImageCoderSignature);
 }
@@ -1157,7 +1168,7 @@ static MagickBooleanType WritePSImage(const ImageInfo *image_info,Image *image,
 {
 #define WriteRunlengthPacket(image,pixel,length,p) \
 { \
-  if ((image->alpha_trait != UndefinedPixelTrait) && \
+  if ((image->alpha_trait != UndefinedPixelTrait) && (length != 0) && \
       (GetPixelAlpha(image,p) == (Quantum) TransparentAlpha)) \
     { \
       q=PopHexPixel(hex_digits,0xff,q); \
@@ -1438,7 +1449,6 @@ static MagickBooleanType WritePSImage(const ImageInfo *image_info,Image *image,
       "  token pop /y exch def pop",
       "  currentfile buffer readline pop",
       "  token pop /pointsize exch def pop",
-      "  /Times-Roman findfont pointsize scalefont setfont",
       (const char *) NULL
     },
     *const PostscriptEpilog[]=
@@ -1809,13 +1819,18 @@ RestoreMSCWarning
         }
         value=GetImageProperty(image,"label",exception);
         if (value != (const char *) NULL)
-          for (j=(ssize_t) MultilineCensus(value)-1; j >= 0; j--)
           {
-            (void) WriteBlobString(image,"  /label 512 string def\n");
-            (void) WriteBlobString(image,"  currentfile label readline pop\n");
-            (void) FormatLocaleString(buffer,MagickPathExtent,
-              "  0 y %g add moveto label show pop\n",j*pointsize+12);
-            (void) WriteBlobString(image,buffer);
+            (void) WriteBlobString(image,
+              "  /Times-Roman findfont pointsize scalefont setfont\n");
+            for (j=(ssize_t) MultilineCensus(value)-1; j >= 0; j--)
+            {
+              (void) WriteBlobString(image,"  /label 512 string def\n");
+              (void) WriteBlobString(image,
+                "  currentfile label readline pop\n");
+              (void) FormatLocaleString(buffer,MagickPathExtent,
+                "  0 y %g add moveto label show pop\n",j*pointsize+12);
+              (void) WriteBlobString(image,buffer);
+            }
           }
         for (s=PostscriptEpilog; *s != (char *) NULL; s++)
         {
@@ -1999,8 +2014,8 @@ RestoreMSCWarning
           /*
             Dump DirectClass image.
           */
-          (void) FormatLocaleString(buffer,MagickPathExtent,"%.20g %.20g\n0\n%d\n",
-            (double) image->columns,(double) image->rows,
+          (void) FormatLocaleString(buffer,MagickPathExtent,
+            "%.20g %.20g\n0\n%d\n",(double) image->columns,(double) image->rows,
             compression == RLECompression ? 1 : 0);
           (void) WriteBlobString(image,buffer);
           switch (compression)

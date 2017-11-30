@@ -17,13 +17,13 @@
 %                                October 2002                                 %
 %                                                                             %
 %                                                                             %
-%  Copyright 1999-2016 ImageMagick Studio LLC, a non-profit organization      %
+%  Copyright 1999-2017 ImageMagick Studio LLC, a non-profit organization      %
 %  dedicated to making software imaging solutions freely available.           %
 %                                                                             %
 %  You may not use this file except in compliance with the License.  You may  %
 %  obtain a copy of the License at                                            %
 %                                                                             %
-%    http://www.imagemagick.org/script/license.php                            %
+%    https://www.imagemagick.org/script/license.php                           %
 %                                                                             %
 %  Unless required by applicable law or agreed to in writing, software        %
 %  distributed under the License is distributed on an "AS IS" BASIS,          %
@@ -175,7 +175,7 @@ MagickExport RectangleInfo GetImageBoundingBox(const Image *image,
   GetPixelInfo(image,&zero);
 #if defined(MAGICKCORE_OPENMP_SUPPORT)
   #pragma omp parallel for schedule(static,4) shared(status) \
-    magick_threads(image,image,image->rows,1)
+    magick_number_threads(image,image,image->rows,1)
 #endif
   for (y=0; y < (ssize_t) image->rows; y++)
   {
@@ -308,11 +308,6 @@ MagickExport size_t GetImageDepth(const Image *image,ExceptionInfo *exception)
   if ((image->storage_class == PseudoClass) &&
       (image->alpha_trait == UndefinedPixelTrait))
     {
-#if defined(MAGICKCORE_OPENMP_SUPPORT)
-      #pragma omp parallel for schedule(static,4) shared(status) \
-        if ((image->colors) > 256) \
-          num_threads(GetMagickResourceLimit(ThreadResource))
-#endif
       for (i=0; i < (ssize_t) image->colors; i++)
       {
         const int
@@ -330,15 +325,15 @@ MagickExport size_t GetImageDepth(const Image *image,ExceptionInfo *exception)
           range=GetQuantumRange(current_depth[id]);
           if ((atDepth != MagickFalse) &&
               (GetPixelRedTraits(image) & UpdatePixelTrait) != 0)
-            if (IsPixelAtDepth(image->colormap[i].red,range) == MagickFalse)
+            if (IsPixelAtDepth(ClampToQuantum(image->colormap[i].red),range) == MagickFalse)
               atDepth=MagickFalse;
           if ((atDepth != MagickFalse) &&
               (GetPixelGreenTraits(image) & UpdatePixelTrait) != 0)
-            if (IsPixelAtDepth(image->colormap[i].green,range) == MagickFalse)
+            if (IsPixelAtDepth(ClampToQuantum(image->colormap[i].green),range) == MagickFalse)
               atDepth=MagickFalse;
           if ((atDepth != MagickFalse) &&
               (GetPixelBlueTraits(image) & UpdatePixelTrait) != 0)
-            if (IsPixelAtDepth(image->colormap[i].blue,range) == MagickFalse)
+            if (IsPixelAtDepth(ClampToQuantum(image->colormap[i].blue),range) == MagickFalse)
               atDepth=MagickFalse;
           if ((atDepth != MagickFalse))
             break;
@@ -354,7 +349,7 @@ MagickExport size_t GetImageDepth(const Image *image,ExceptionInfo *exception)
     }
   image_view=AcquireVirtualCacheView(image,exception);
 #if !defined(MAGICKCORE_HDRI_SUPPORT)
-  if (QuantumRange <= MaxMap)
+  if ((1UL*QuantumRange) <= MaxMap)
     {
       size_t
         *depth_map;
@@ -387,7 +382,7 @@ MagickExport size_t GetImageDepth(const Image *image,ExceptionInfo *exception)
       }
 #if defined(MAGICKCORE_OPENMP_SUPPORT)
       #pragma omp parallel for schedule(static,4) shared(status) \
-        magick_threads(image,image,image->rows,1)
+        magick_number_threads(image,image,image->rows,1)
 #endif
       for (y=0; y < (ssize_t) image->rows; y++)
       {
@@ -407,15 +402,18 @@ MagickExport size_t GetImageDepth(const Image *image,ExceptionInfo *exception)
           continue;
         for (x=0; x < (ssize_t) image->columns; x++)
         {
-          if (GetPixelReadMask(image,p) == 0)
+          register ssize_t
+            i;
+
+          if (GetPixelWriteMask(image,p) <= (QuantumRange/2))
             {
               p+=GetPixelChannels(image);
               continue;
             }
           for (i=0; i < (ssize_t) GetPixelChannels(image); i++)
           {
-            PixelChannel channel=GetPixelChannelChannel(image,i);
-            PixelTrait traits=GetPixelChannelTraits(image,channel);
+            PixelChannel channel = GetPixelChannelChannel(image,i);
+            PixelTrait traits = GetPixelChannelTraits(image,channel);
             if ((traits == UndefinedPixelTrait) ||
                 (channel == IndexPixelChannel) ||
                 (channel == ReadMaskPixelChannel) ||
@@ -444,7 +442,7 @@ MagickExport size_t GetImageDepth(const Image *image,ExceptionInfo *exception)
   */
 #if defined(MAGICKCORE_OPENMP_SUPPORT)
   #pragma omp parallel for schedule(static,4) shared(status) \
-    magick_threads(image,image,image->rows,1)
+    magick_number_threads(image,image,image->rows,1)
 #endif
   for (y=0; y < (ssize_t) image->rows; y++)
   {
@@ -464,7 +462,10 @@ MagickExport size_t GetImageDepth(const Image *image,ExceptionInfo *exception)
       continue;
     for (x=0; x < (ssize_t) image->columns; x++)
     {
-      if (GetPixelReadMask(image,p) == 0)
+      register ssize_t
+        i;
+
+      if (GetPixelWriteMask(image,p) <= (QuantumRange/2))
         {
           p+=GetPixelChannels(image);
           continue;
@@ -1031,7 +1032,7 @@ MagickExport MagickBooleanType SetImageDepth(Image *image,
 
 #if defined(MAGICKCORE_OPENMP_SUPPORT)
       #pragma omp parallel for schedule(static,4) shared(status) \
-        magick_threads(image,image,1,1)
+        magick_number_threads(image,image,image->colors,1)
 #endif
       for (i=0; i < (ssize_t) image->colors; i++)
       {
@@ -1052,7 +1053,7 @@ MagickExport MagickBooleanType SetImageDepth(Image *image,
   status=MagickTrue;
   image_view=AcquireAuthenticCacheView(image,exception);
 #if !defined(MAGICKCORE_HDRI_SUPPORT)
-  if (QuantumRange <= MaxMap)
+  if ((1UL*QuantumRange) <= MaxMap)
     {
       Quantum
         *depth_map;
@@ -1071,7 +1072,7 @@ MagickExport MagickBooleanType SetImageDepth(Image *image,
           range);
 #if defined(MAGICKCORE_OPENMP_SUPPORT)
       #pragma omp parallel for schedule(static,4) shared(status) \
-        magick_threads(image,image,image->rows,1)
+        magick_number_threads(image,image,image->rows,1)
 #endif
       for (y=0; y < (ssize_t) image->rows; y++)
       {
@@ -1095,7 +1096,7 @@ MagickExport MagickBooleanType SetImageDepth(Image *image,
           register ssize_t
             i;
 
-          if (GetPixelReadMask(image,q) == 0)
+          if (GetPixelWriteMask(image,q) <= (QuantumRange/2))
             {
               q+=GetPixelChannels(image);
               continue;
@@ -1136,7 +1137,7 @@ MagickExport MagickBooleanType SetImageDepth(Image *image,
   */
 #if defined(MAGICKCORE_OPENMP_SUPPORT)
   #pragma omp parallel for schedule(static,4) shared(status) \
-    magick_threads(image,image,image->rows,1)
+    magick_number_threads(image,image,image->rows,1)
 #endif
   for (y=0; y < (ssize_t) image->rows; y++)
   {
@@ -1159,7 +1160,7 @@ MagickExport MagickBooleanType SetImageDepth(Image *image,
       register ssize_t
         i;
 
-      if (GetPixelReadMask(image,q) == 0)
+      if (GetPixelWriteMask(image,q) <= (QuantumRange/2))
         {
           q+=GetPixelChannels(image);
           continue;
@@ -1177,7 +1178,8 @@ MagickExport MagickBooleanType SetImageDepth(Image *image,
         if ((traits == UndefinedPixelTrait) || (channel == IndexPixelChannel) ||
             (channel == ReadMaskPixelChannel))
           continue;
-        q[i]=ScaleAnyToQuantum(ScaleQuantumToAny(ClampPixel(q[i]),range),range);
+        q[i]=ScaleAnyToQuantum(ScaleQuantumToAny(ClampPixel((MagickRealType)
+          q[i]),range),range);
       }
       q+=GetPixelChannels(image);
     }
@@ -1264,7 +1266,6 @@ MagickExport MagickBooleanType SetImageType(Image *image,const ImageType type,
           status=QuantizeImage(quantize_info,image,exception);
           quantize_info=DestroyQuantizeInfo(quantize_info);
         }
-      image->colors=2;
       image->alpha_trait=UndefinedPixelTrait;
       break;
     }

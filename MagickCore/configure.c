@@ -17,13 +17,13 @@
 %                                 July 2003                                   %
 %                                                                             %
 %                                                                             %
-%  Copyright 1999-2016 ImageMagick Studio LLC, a non-profit organization      %
+%  Copyright 1999-2017 ImageMagick Studio LLC, a non-profit organization      %
 %  dedicated to making software imaging solutions freely available.           %
 %                                                                             %
 %  You may not use this file except in compliance with the License.  You may  %
 %  obtain a copy of the License at                                            %
 %                                                                             %
-%    http://www.imagemagick.org/script/license.php                            %
+%    https://www.imagemagick.org/script/license.php                           %
 %                                                                             %
 %  Unless required by applicable law or agreed to in writing, software        %
 %  distributed under the License is distributed on an "AS IS" BASIS,          %
@@ -49,6 +49,7 @@
 #include "MagickCore/linked-list.h"
 #include "MagickCore/log.h"
 #include "MagickCore/memory_.h"
+#include "MagickCore/memory-private.h"
 #include "MagickCore/semaphore.h"
 #include "MagickCore/string_.h"
 #include "MagickCore/string-private.h"
@@ -163,8 +164,6 @@ static LinkedListInfo *AcquireConfigureCache(const char *filename,
     Load external configure map.
   */
   cache=NewLinkedList(0);
-  if (cache == (LinkedListInfo *) NULL)
-    ThrowFatalException(ResourceLimitFatalError,"MemoryAllocationFailed");
   status=MagickTrue;
 #if !defined(MAGICKCORE_ZERO_CONFIGURATION_SUPPORT)
   {
@@ -1246,10 +1245,8 @@ static MagickBooleanType LoadConfigureCache(LinkedListInfo *cache,
         /*
           Configure element.
         */
-        configure_info=(ConfigureInfo *) AcquireMagickMemory(
+        configure_info=(ConfigureInfo *) AcquireCriticalMemory(
           sizeof(*configure_info));
-        if (configure_info == (ConfigureInfo *) NULL)
-          ThrowFatalException(ResourceLimitFatalError,"MemoryAllocationFailed");
         (void) ResetMagickMemory(configure_info,0,sizeof(*configure_info));
         configure_info->path=ConstantString(filename);
         configure_info->exempt=MagickFalse;
@@ -1258,7 +1255,8 @@ static MagickBooleanType LoadConfigureCache(LinkedListInfo *cache,
       }
     if (configure_info == (ConfigureInfo *) NULL)
       continue;
-    if (LocaleCompare(keyword,"/>") == 0)
+    if ((LocaleCompare(keyword,"/>") == 0) ||
+        (LocaleCompare(keyword,"</policy>") == 0))
       {
         status=AppendValueToLinkedList(cache,configure_info);
         if (status == MagickFalse)

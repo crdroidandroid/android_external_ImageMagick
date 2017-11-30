@@ -1,11 +1,11 @@
 /*
-  Copyright 1999-2016 ImageMagick Studio LLC, a non-profit organization
+  Copyright 1999-2017 ImageMagick Studio LLC, a non-profit organization
   dedicated to making software imaging solutions freely available.
 
   You may not use this file except in compliance with the License.
   obtain a copy of the License at
 
-    http://www.imagemagick.org/script/license.php
+    https://www.imagemagick.org/script/license.php
 
   Unless required by applicable law or agreed to in writing, software
   distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,6 +18,7 @@
 #ifndef MAGICKCORE_PIXEL_ACCESSOR_H
 #define MAGICKCORE_PIXEL_ACCESSOR_H
 
+#include <assert.h>
 #include "MagickCore/cache.h"
 #include "MagickCore/cache-view.h"
 #include "MagickCore/color.h"
@@ -31,16 +32,16 @@ extern "C" {
 
 #undef index
 
-static inline Quantum ClampPixel(const MagickRealType value)
-{ 
-  if (value < 0.0f)
-    return(0); 
-  if (value >= (MagickRealType) QuantumRange)
+static inline Quantum ClampPixel(const MagickRealType pixel)
+{
+  if (pixel < 0.0f)
+    return((Quantum) 0);
+  if (pixel >= (MagickRealType) QuantumRange)
     return((Quantum) QuantumRange);
 #if !defined(MAGICKCORE_HDRI_SUPPORT)
-  return((Quantum) (value+0.5f));
+  return((Quantum) (pixel+0.5f));
 #else
-  return((Quantum) value);
+  return((Quantum) pixel);
 #endif
 }
 
@@ -446,10 +447,10 @@ static inline MagickBooleanType IsPixelAtDepth(const Quantum pixel,
     quantum;
 
 #if !defined(MAGICKCORE_HDRI_SUPPORT)
-  quantum=(Quantum) (((MagickRealType) QuantumRange*((QuantumAny) 
+  quantum=(Quantum) (((MagickRealType) QuantumRange*((QuantumAny)
     (((MagickRealType) range*pixel)/QuantumRange+0.5)))/range+0.5);
 #else
-  quantum=(Quantum) (((MagickRealType) QuantumRange*((QuantumAny) 
+  quantum=(Quantum) (((MagickRealType) QuantumRange*((QuantumAny)
     (((MagickRealType) range*pixel)/QuantumRange+0.5)))/range);
 #endif
   return(pixel == quantum ? MagickTrue : MagickFalse);
@@ -460,38 +461,33 @@ static inline MagickBooleanType IsPixelEquivalent(
   const PixelInfo *magick_restrict q)
 {
   MagickRealType
-    value;
+    alpha,
+    beta,
+    color;
 
-  value=(MagickRealType) p[image->channel_map[AlphaPixelChannel].offset];
-  if ((image->alpha_trait != UndefinedPixelTrait) &&
-      (q->alpha_trait == UndefinedPixelTrait) &&
-      (AbsolutePixelValue(value-OpaqueAlpha) >= MagickEpsilon))
+  color=(MagickRealType) p[image->channel_map[AlphaPixelChannel].offset];
+  alpha=image->alpha_trait == UndefinedPixelTrait ? (MagickRealType)
+    OpaqueAlpha : color;
+  beta=q->alpha_trait == UndefinedPixelTrait ? (MagickRealType) OpaqueAlpha :
+    q->alpha;
+  if (AbsolutePixelValue(alpha-beta) >= MagickEpsilon)
     return(MagickFalse);
-  if ((q->alpha_trait != UndefinedPixelTrait) &&
-      (image->alpha_trait == UndefinedPixelTrait) &&
-      (AbsolutePixelValue(q->alpha-OpaqueAlpha)) >= MagickEpsilon)
+  if ((AbsolutePixelValue(alpha-TransparentAlpha) < MagickEpsilon) ||
+      (AbsolutePixelValue(beta-TransparentAlpha) < MagickEpsilon))
+    return(MagickTrue);  /* no color component if pixel is transparent */
+  color=(MagickRealType) p[image->channel_map[RedPixelChannel].offset];
+  if (AbsolutePixelValue(color-q->red) >= MagickEpsilon)
     return(MagickFalse);
-  if ((image->alpha_trait != UndefinedPixelTrait) &&
-      (q->alpha_trait != UndefinedPixelTrait))
-    {
-      if (AbsolutePixelValue(value-q->alpha) >= MagickEpsilon)
-        return(MagickFalse);
-      if (AbsolutePixelValue(value-TransparentAlpha) < MagickEpsilon)
-        return(MagickTrue);
-    }
-  value=(MagickRealType) p[image->channel_map[RedPixelChannel].offset];
-  if (AbsolutePixelValue(value-q->red) >= MagickEpsilon)
+  color=(MagickRealType) p[image->channel_map[GreenPixelChannel].offset];
+  if (AbsolutePixelValue(color-q->green) >= MagickEpsilon)
     return(MagickFalse);
-  value=(MagickRealType) p[image->channel_map[GreenPixelChannel].offset];
-  if (AbsolutePixelValue(value-q->green) >= MagickEpsilon)
-    return(MagickFalse);
-  value=(MagickRealType) p[image->channel_map[BluePixelChannel].offset];
-  if (AbsolutePixelValue(value-q->blue) >= MagickEpsilon)
+  color=(MagickRealType) p[image->channel_map[BluePixelChannel].offset];
+  if (AbsolutePixelValue(color-q->blue) >= MagickEpsilon)
     return(MagickFalse);
   if (image->colorspace == CMYKColorspace)
     {
-      value=(MagickRealType) p[image->channel_map[BlackPixelChannel].offset];
-      if (AbsolutePixelValue(value-q->black) >= MagickEpsilon)
+      color=(MagickRealType) p[image->channel_map[BlackPixelChannel].offset];
+      if (AbsolutePixelValue(color-q->black) >= MagickEpsilon)
         return(MagickFalse);
     }
   return(MagickTrue);
@@ -518,31 +514,30 @@ static inline MagickBooleanType IsPixelGray(const Image *magick_restrict image,
 static inline MagickBooleanType IsPixelInfoEquivalent(
   const PixelInfo *magick_restrict p,const PixelInfo *magick_restrict q)
 {
-  if ((p->alpha_trait != UndefinedPixelTrait) &&
-      (q->alpha_trait == UndefinedPixelTrait) &&
-      (AbsolutePixelValue(p->alpha-OpaqueAlpha) >= MagickEpsilon))
+  MagickRealType
+    alpha,
+    beta;
+
+  alpha=p->alpha_trait == UndefinedPixelTrait ? (MagickRealType) OpaqueAlpha :
+    p->alpha;
+  beta=q->alpha_trait == UndefinedPixelTrait ? (MagickRealType) OpaqueAlpha :
+    q->alpha;
+  if (AbsolutePixelValue(alpha-beta) >= MagickEpsilon)
     return(MagickFalse);
-  if ((q->alpha_trait != UndefinedPixelTrait) &&
-      (p->alpha_trait == UndefinedPixelTrait) &&
-      (AbsolutePixelValue(q->alpha-OpaqueAlpha)) >= MagickEpsilon)
-    return(MagickFalse);
-  if ((p->alpha_trait != UndefinedPixelTrait) &&
-      (q->alpha_trait != UndefinedPixelTrait))
-    {
-      if (AbsolutePixelValue(p->alpha-q->alpha) >= MagickEpsilon)
-        return(MagickFalse);
-      if (AbsolutePixelValue(p->alpha-TransparentAlpha) < MagickEpsilon)
-        return(MagickTrue);
-    }
+  if ((AbsolutePixelValue(alpha-TransparentAlpha) < MagickEpsilon) ||
+      (AbsolutePixelValue(beta-TransparentAlpha) < MagickEpsilon))
+    return(MagickTrue);  /* no color component if pixel is transparent */
   if (AbsolutePixelValue(p->red-q->red) >= MagickEpsilon)
     return(MagickFalse);
   if (AbsolutePixelValue(p->green-q->green) >= MagickEpsilon)
     return(MagickFalse);
   if (AbsolutePixelValue(p->blue-q->blue) >= MagickEpsilon)
     return(MagickFalse);
-  if ((p->colorspace == CMYKColorspace) &&
-      (AbsolutePixelValue(p->black-q->black) >= MagickEpsilon))
-    return(MagickFalse);
+  if (p->colorspace == CMYKColorspace)
+    {
+      if (AbsolutePixelValue(p->black-q->black) >= MagickEpsilon)
+        return(MagickFalse);
+    }
   return(MagickTrue);
 }
 
@@ -629,7 +624,7 @@ static inline void SetPixelBackgoundColor(const Image *magick_restrict image,
     i;
 
   for (i=0; i < (ssize_t) GetPixelChannels(image); i++)
-    pixel[i]=0;
+    pixel[i]=(Quantum) 0;
   pixel[image->channel_map[RedPixelChannel].offset]=
     ClampToQuantum(image->background_color.red);
   pixel[image->channel_map[GreenPixelChannel].offset]=
@@ -691,6 +686,8 @@ static inline void SetPixelChannelAttributes(
   const Image *magick_restrict image,const PixelChannel channel,
   const PixelTrait traits,const ssize_t offset)
 {
+  assert((ssize_t) channel < MaxPixelChannels);
+  assert(offset < MaxPixelChannels);
   image->channel_map[offset].channel=channel;
   image->channel_map[channel].offset=offset;
   image->channel_map[channel].traits=traits;

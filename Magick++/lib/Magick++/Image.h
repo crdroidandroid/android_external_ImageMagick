@@ -1,7 +1,7 @@
 // This may look like C code, but it is really -*- C++ -*-
 //
 // Copyright Bob Friesenhahn, 1999, 2000, 2001, 2002, 2003
-// Copyright Dirk Lemstra 2013-2016
+// Copyright Dirk Lemstra 2013-2017
 //
 // Definition of Image, the representation of a single image in Magick++
 //
@@ -106,8 +106,8 @@ namespace Magick
     bool alpha(void) const;
 
     // Transparent color
-    void alphaColor(const Color &alphaColor_);
-    Color alphaColor(void) const;
+    void matteColor(const Color &matteColor_);
+    Color matteColor(void) const;
 
     // Time in 1/100ths of a second which must expire before
     // displaying the next image in an animated sequence.
@@ -326,6 +326,9 @@ namespace Magick
     // File type magick identifier (.e.g "GIF")
     void magick(const std::string &magick_);
     std::string magick(void) const;
+
+    // When comparing images, set pixels with a read mask to this color.
+    void masklightColor(const Color color_);
 
     // The mean error per pixel computed when an image is color reduced
     double meanErrorPerPixel(void) const;
@@ -624,6 +627,7 @@ namespace Magick
     std::string artifact(const std::string &name_) const;
 
     // Access/Update a named image attribute
+    void attribute(const std::string name_,const char *value_);
     void attribute(const std::string name_,const std::string value_);
     std::string attribute(const std::string name_) const;
 
@@ -639,6 +643,11 @@ namespace Magick
 
     // Adjusts an image so that its orientation is suitable for viewing.
     void autoOrient(void);
+
+    // Automatically selects a threshold and replaces each pixel in the image
+    // with a black pixel if the image intentsity is less than the selected
+    // threshold otherwise white.
+    void autoThreshold(const AutoThresholdMethod method_);
 
     // Forces all pixels below the threshold into black while leaving all
     // pixels at or above the threshold unchanged.
@@ -685,6 +694,8 @@ namespace Magick
     // pixels, not counting the center pixel.  The sigma_ parameter
     // specifies the standard deviation of the Laplacian, in pixels.
     void charcoal(const double radius_=0.0,const double sigma_=1.0);
+    void charcoalChannel(const ChannelType channel_,const double radius_=0.0,
+      const double sigma_=1.0);
 
     // Chop image (remove vertical or horizontal subregion of image)
     // FIXME: describe how geometry argument is used to select either
@@ -1064,6 +1075,10 @@ namespace Magick
     // Remap image colors with closest color from reference image
     void map(const Image &mapImage_,const bool dither_=false);
 
+    // Delineate arbitrarily shaped clusters in the image.
+    void meanShift(const size_t width_,const size_t height_,
+      const double color_distance_);
+
     // Filter image by replacing each pixel component with the median
     // color in a circular neighborhood
     void medianFilter(const double radius_=0.0);
@@ -1249,7 +1264,8 @@ namespace Magick
     void roll(const Geometry &roll_);
     void roll(const size_t columns_,const size_t rows_);
 
-    // Rotate image counter-clockwise by specified number of degrees.
+    // Rotate image clockwise by specified number of degrees. Specify a
+    // negative number for degrees to rotate counter-clockwise.
     void rotate(const double degrees_);
 
     // Rotational blur image.

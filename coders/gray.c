@@ -17,13 +17,13 @@
 %                                 July 1992                                   %
 %                                                                             %
 %                                                                             %
-%  Copyright 1999-2016 ImageMagick Studio LLC, a non-profit organization      %
+%  Copyright 1999-2017 ImageMagick Studio LLC, a non-profit organization      %
 %  dedicated to making software imaging solutions freely available.           %
 %                                                                             %
 %  You may not use this file except in compliance with the License.  You may  %
 %  obtain a copy of the License at                                            %
 %                                                                             %
-%    http://www.imagemagick.org/script/license.php                            %
+%    https://www.imagemagick.org/script/license.php                           %
 %                                                                             %
 %  Unless required by applicable law or agreed to in writing, software        %
 %  distributed under the License is distributed on an "AS IS" BASIS,          %
@@ -139,19 +139,22 @@ static Image *ReadGRAYImage(const ImageInfo *image_info,
   image=AcquireImage(image_info,exception);
   if ((image->columns == 0) || (image->rows == 0))
     ThrowReaderException(OptionError,"MustSpecifyImageSize");
+  status=SetImageExtent(image,image->columns,image->rows,exception);
+  if (status == MagickFalse)
+    return(DestroyImageList(image));
   status=OpenBlob(image_info,image,ReadBinaryBlobMode,exception);
   if (status == MagickFalse)
     {
       image=DestroyImageList(image);
       return((Image *) NULL);
     }
-  if (DiscardBlobBytes(image,(size_t) image->offset) == MagickFalse)
+  if (DiscardBlobBytes(image,(MagickSizeType) image->offset) == MagickFalse)
     ThrowFileException(exception,CorruptImageError,"UnexpectedEndOfFile",
       image->filename);
   /*
     Create virtual canvas to support cropping (i.e. image.gray[100x100+10+20]).
   */
-  SetImageColorspace(image,GRAYColorspace,exception);
+  (void) SetImageColorspace(image,GRAYColorspace,exception);
   canvas_image=CloneImage(image,image->extract_info.width,1,MagickFalse,
     exception);
   (void) SetImageVirtualPixelMethod(canvas_image,BlackVirtualPixelMethod,
@@ -180,6 +183,7 @@ static Image *ReadGRAYImage(const ImageInfo *image_info,
   scene=0;
   count=0;
   length=0;
+  status=MagickTrue;
   do
   {
     /*
@@ -190,8 +194,9 @@ static Image *ReadGRAYImage(const ImageInfo *image_info,
         break;
     status=SetImageExtent(image,image->columns,image->rows,exception);
     if (status == MagickFalse)
-      return(DestroyImageList(image));
-    SetImageColorspace(image,GRAYColorspace,exception);
+      break;
+    if (SetImageColorspace(image,GRAYColorspace,exception) == MagickFalse)
+      break;
     if (scene == 0)
       {
         length=GetQuantumExtent(canvas_image,quantum_info,quantum_type);
@@ -211,6 +216,7 @@ static Image *ReadGRAYImage(const ImageInfo *image_info,
 
       if (count != (ssize_t) length)
         {
+          status=MagickFalse;
           ThrowFileException(exception,CorruptImageError,
             "UnexpectedEndOfFile",image->filename);
           break;
@@ -229,8 +235,7 @@ static Image *ReadGRAYImage(const ImageInfo *image_info,
             image->columns,1,exception);
           q=QueueAuthenticPixels(image,0,y-image->extract_info.y,image->columns,
             1,exception);
-          if ((p == (const Quantum *) NULL) ||
-              (q == (Quantum *) NULL))
+          if ((p == (const Quantum *) NULL) || (q == (Quantum *) NULL))
             break;
           for (x=0; x < (ssize_t) image->columns; x++)
           {
@@ -280,6 +285,8 @@ static Image *ReadGRAYImage(const ImageInfo *image_info,
   quantum_info=DestroyQuantumInfo(quantum_info);
   canvas_image=DestroyImage(canvas_image);
   (void) CloseBlob(image);
+  if (status == MagickFalse)
+    return(DestroyImageList(image));
   return(GetFirstImageInList(image));
 }
 

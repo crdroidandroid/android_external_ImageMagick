@@ -17,13 +17,13 @@
 %                                 July 2003                                   %
 %                                                                             %
 %                                                                             %
-%  Copyright 1999-2016 ImageMagick Studio LLC, a non-profit organization      %
+%  Copyright 1999-2017 ImageMagick Studio LLC, a non-profit organization      %
 %  dedicated to making software imaging solutions freely available.           %
 %                                                                             %
 %  You may not use this file except in compliance with the License.  You may  %
 %  obtain a copy of the License at                                            %
 %                                                                             %
-%    http://www.imagemagick.org/script/license.php                            %
+%    https://www.imagemagick.org/script/license.php                           %
 %                                                                             %
 %  Unless required by applicable law or agreed to in writing, software        %
 %  distributed under the License is distributed on an "AS IS" BASIS,          %
@@ -51,6 +51,7 @@
 #include "MagickCore/locale-private.h"
 #include "MagickCore/log.h"
 #include "MagickCore/memory_.h"
+#include "MagickCore/memory-private.h"
 #include "MagickCore/nt-base-private.h"
 #include "MagickCore/semaphore.h"
 #include "MagickCore/splay-tree.h"
@@ -193,8 +194,6 @@ static SplayTreeInfo *AcquireLocaleSplayTree(const char *filename,
 
   cache=NewSplayTree(CompareSplayTreeString,(void *(*)(void *)) NULL,
     DestroyLocaleNode);
-  if (cache == (SplayTreeInfo *) NULL)
-    ThrowFatalException(ResourceLimitFatalError,"MemoryAllocationFailed");
   status=MagickTrue;
 #if !defined(MAGICKCORE_ZERO_CONFIGURATION_SUPPORT)
   {
@@ -1326,9 +1325,7 @@ static MagickBooleanType LoadLocaleCache(SplayTreeInfo *cache,const char *xml,
           q--;
         (void) CopyMagickString(message,p,MagickMin((size_t) (q-p+2),
           MagickLocaleExtent));
-        locale_info=(LocaleInfo *) AcquireMagickMemory(sizeof(*locale_info));
-        if (locale_info == (LocaleInfo *) NULL)
-          ThrowFatalException(ResourceLimitFatalError,"MemoryAllocationFailed");
+        locale_info=(LocaleInfo *) AcquireCriticalMemory(sizeof(*locale_info));
         (void) ResetMagickMemory(locale_info,0,sizeof(*locale_info));
         locale_info->path=ConstantString(filename);
         locale_info->tag=ConstantString(tag);

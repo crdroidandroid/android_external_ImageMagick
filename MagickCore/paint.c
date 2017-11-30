@@ -17,13 +17,13 @@
 %                                 July 1998                                   %
 %                                                                             %
 %                                                                             %
-%  Copyright 1999-2016 ImageMagick Studio LLC, a non-profit organization      %
+%  Copyright 1999-2017 ImageMagick Studio LLC, a non-profit organization      %
 %  dedicated to making software imaging solutions freely available.           %
 %                                                                             %
 %  You may not use this file except in compliance with the License.  You may  %
 %  obtain a copy of the License at                                            %
 %                                                                             %
-%    http://www.imagemagick.org/script/license.php                            %
+%    https://www.imagemagick.org/script/license.php                           %
 %                                                                             %
 %  Unless required by applicable law or agreed to in writing, software        %
 %  distributed under the License is distributed on an "AS IS" BASIS,          %
@@ -320,10 +320,6 @@ MagickExport MagickBooleanType FloodfillPaintImage(Image *image,
     } while (x <= x2);
   }
   status=MagickTrue;
-#if defined(MAGICKCORE_OPENMP_SUPPORT)
-  #pragma omp parallel for schedule(static,4) shared(status) \
-    magick_threads(floodplane_image,image,floodplane_image->rows,1)
-#endif
   for (y=0; y < (ssize_t) image->rows; y++)
   {
     register const Quantum
@@ -438,8 +434,8 @@ MagickExport MagickBooleanType GradientImage(Image *image,
   artifact=GetImageArtifact(image,"gradient:bounding-box");
   if (artifact != (const char *) NULL)
     (void) ParseAbsoluteGeometry(artifact,&gradient->bounding_box);
-  gradient->gradient_vector.x2=(double) image->columns-1.0;
-  gradient->gradient_vector.y2=(double) image->rows-1.0;
+  gradient->gradient_vector.x2=(double) image->columns-1;
+  gradient->gradient_vector.y2=(double) image->rows-1;
   artifact=GetImageArtifact(image,"gradient:direction");
   if (artifact != (const char *) NULL)
     {
@@ -452,8 +448,8 @@ MagickExport MagickBooleanType GradientImage(Image *image,
       {
         case NorthWestGravity:
         {
-          gradient->gradient_vector.x1=(double) image->columns-1.0;
-          gradient->gradient_vector.y1=(double) image->rows-1.0;
+          gradient->gradient_vector.x1=(double) image->columns-1;
+          gradient->gradient_vector.y1=(double) image->rows-1;
           gradient->gradient_vector.x2=0.0;
           gradient->gradient_vector.y2=0.0;
           break;
@@ -461,7 +457,7 @@ MagickExport MagickBooleanType GradientImage(Image *image,
         case NorthGravity:
         {
           gradient->gradient_vector.x1=0.0;
-          gradient->gradient_vector.y1=(double) image->rows-1.0;
+          gradient->gradient_vector.y1=(double) image->rows-1;
           gradient->gradient_vector.x2=0.0;
           gradient->gradient_vector.y2=0.0;
           break;
@@ -469,14 +465,14 @@ MagickExport MagickBooleanType GradientImage(Image *image,
         case NorthEastGravity:
         {
           gradient->gradient_vector.x1=0.0;
-          gradient->gradient_vector.y1=(double) image->rows-1.0;
-          gradient->gradient_vector.x2=(double) image->columns-1.0;
+          gradient->gradient_vector.y1=(double) image->rows-1;
+          gradient->gradient_vector.x2=(double) image->columns-1;
           gradient->gradient_vector.y2=0.0;
           break;
         }
         case WestGravity:
         {
-          gradient->gradient_vector.x1=(double) image->columns-1.0;
+          gradient->gradient_vector.x1=(double) image->columns-1;
           gradient->gradient_vector.y1=0.0;
           gradient->gradient_vector.x2=0.0;
           gradient->gradient_vector.y2=0.0;
@@ -486,16 +482,16 @@ MagickExport MagickBooleanType GradientImage(Image *image,
         {
           gradient->gradient_vector.x1=0.0;
           gradient->gradient_vector.y1=0.0;
-          gradient->gradient_vector.x2=(double) image->columns-1.0;
+          gradient->gradient_vector.x2=(double) image->columns-1;
           gradient->gradient_vector.y2=0.0;
           break;
         }
         case SouthWestGravity:
         {
-          gradient->gradient_vector.x1=(double) image->columns-1.0;
+          gradient->gradient_vector.x1=(double) image->columns-1;
           gradient->gradient_vector.y1=0.0;
           gradient->gradient_vector.x2=0.0;
-          gradient->gradient_vector.y2=(double) image->rows-1.0;
+          gradient->gradient_vector.y2=(double) image->rows-1;
           break;
         }
         case SouthGravity:
@@ -503,15 +499,15 @@ MagickExport MagickBooleanType GradientImage(Image *image,
           gradient->gradient_vector.x1=0.0;
           gradient->gradient_vector.y1=0.0;
           gradient->gradient_vector.x2=0.0;
-          gradient->gradient_vector.y2=(double) image->columns-1.0;
+          gradient->gradient_vector.y2=(double) image->columns-1;
           break;
         }
         case SouthEastGravity:
         {
           gradient->gradient_vector.x1=0.0;
           gradient->gradient_vector.y1=0.0;
-          gradient->gradient_vector.x2=(double) image->columns-1.0;
-          gradient->gradient_vector.y2=(double) image->rows-1.0;
+          gradient->gradient_vector.x2=(double) image->columns-1;
+          gradient->gradient_vector.y2=(double) image->rows-1;
           break;
         }
         default:
@@ -551,43 +547,46 @@ MagickExport MagickBooleanType GradientImage(Image *image,
       */
       sine=sin((double) DegreesToRadians(gradient->angle-90.0));
       cosine=cos((double) DegreesToRadians(gradient->angle-90.0));
-      distance=fabs((double) image->columns*cosine)+
-        fabs((double) image->rows*sine);
-      gradient->gradient_vector.x1=0.5*(image->columns-distance*cosine);
-      gradient->gradient_vector.y1=0.5*(image->rows-distance*sine);
-      gradient->gradient_vector.x2=0.5*(image->columns+distance*cosine);
-      gradient->gradient_vector.y2=0.5*(image->rows+distance*sine);
+      distance=fabs((double) (image->columns-1.0)*cosine)+
+        fabs((double) (image->rows-1.0)*sine);
+      gradient->gradient_vector.x1=0.5*((image->columns-1.0)-distance*cosine);
+      gradient->gradient_vector.y1=0.5*((image->rows-1.0)-distance*sine);
+      gradient->gradient_vector.x2=0.5*((image->columns-1.0)+distance*cosine);
+      gradient->gradient_vector.y2=0.5*((image->rows-1.0)+distance*sine);
     }
-  gradient->radii.x=(double) MagickMax(image->columns,image->rows)/2.0;
+  gradient->radii.x=(double) MagickMax((image->columns-1.0),(image->rows-1.0))/
+    2.0;
   gradient->radii.y=gradient->radii.x;
   artifact=GetImageArtifact(image,"gradient:extent");
   if (artifact != (const char *) NULL)
     {
       if (LocaleCompare(artifact,"Circle") == 0)
         {
-          gradient->radii.x=(double) MagickMax(image->columns,image->rows)/2.0;
+          gradient->radii.x=(double) MagickMax((image->columns-1.0),
+            (image->rows-1.0))/2.0;
           gradient->radii.y=gradient->radii.x;
         }
       if (LocaleCompare(artifact,"Diagonal") == 0)
         {
-          gradient->radii.x=(double) (sqrt(image->columns*image->columns+
-            image->rows*image->rows))/2.0;
+          gradient->radii.x=(double) (sqrt((image->columns-1.0)*
+            (image->columns-1.0)+(image->rows-1.0)*(image->rows-1.0)))/2.0;
           gradient->radii.y=gradient->radii.x;
         }
       if (LocaleCompare(artifact,"Ellipse") == 0)
         {
-          gradient->radii.x=(double) image->columns/2.0;
-          gradient->radii.y=(double) image->rows/2.0;
+          gradient->radii.x=(double) (image->columns-1.0)/2.0;
+          gradient->radii.y=(double) (image->rows-1.0)/2.0;
         }
       if (LocaleCompare(artifact,"Maximum") == 0)
         {
-          gradient->radii.x=(double) MagickMax(image->columns,image->rows)/2.0;
+          gradient->radii.x=(double) MagickMax((image->columns-1.0),
+            (image->rows-1.0))/2.0;
           gradient->radii.y=gradient->radii.x;
         }
       if (LocaleCompare(artifact,"Minimum") == 0)
         {
-          gradient->radii.x=(double) (MagickMin(image->columns,image->rows))/
-            2.0;
+          gradient->radii.x=(double) (MagickMin((image->columns-1.0),
+            (image->rows-1.0)))/2.0;
           gradient->radii.y=gradient->radii.x;
         }
     }
@@ -756,7 +755,7 @@ MagickExport Image *OilPaintImage(const Image *image,const double radius,
   paint_view=AcquireAuthenticCacheView(paint_image,exception);
 #if defined(MAGICKCORE_OPENMP_SUPPORT)
   #pragma omp parallel for schedule(static,4) shared(progress,status) \
-    magick_threads(linear_image,paint_image,linear_image->rows,1)
+    magick_number_threads(linear_image,paint_image,linear_image->rows,1)
 #endif
   for (y=0; y < (ssize_t) linear_image->rows; y++)
   {
@@ -823,14 +822,14 @@ MagickExport Image *OilPaintImage(const Image *image,const double radius,
       }
       for (i=0; i < (ssize_t) GetPixelChannels(linear_image); i++)
       {
-        PixelChannel channel=GetPixelChannelChannel(linear_image,i);
-        PixelTrait traits=GetPixelChannelTraits(linear_image,channel);
+        PixelChannel channel = GetPixelChannelChannel(linear_image,i);
+        PixelTrait traits = GetPixelChannelTraits(linear_image,channel);
         PixelTrait paint_traits=GetPixelChannelTraits(paint_image,channel);
         if ((traits == UndefinedPixelTrait) ||
             (paint_traits == UndefinedPixelTrait))
           continue;
         if (((paint_traits & CopyPixelTrait) != 0) ||
-            (GetPixelReadMask(linear_image,p) == 0))
+            (GetPixelWriteMask(linear_image,p) <= (QuantumRange/2)))
           {
             SetPixelChannel(paint_image,channel,p[center+i],q);
             continue;
@@ -947,7 +946,7 @@ MagickExport MagickBooleanType OpaquePaintImage(Image *image,
   image_view=AcquireAuthenticCacheView(image,exception);
 #if defined(MAGICKCORE_OPENMP_SUPPORT)
   #pragma omp parallel for schedule(static,4) shared(progress,status) \
-    magick_threads(image,image,image->rows,1)
+    magick_number_threads(image,image,image->rows,1)
 #endif
   for (y=0; y < (ssize_t) image->rows; y++)
   {
@@ -971,9 +970,33 @@ MagickExport MagickBooleanType OpaquePaintImage(Image *image,
     pixel=zero;
     for (x=0; x < (ssize_t) image->columns; x++)
     {
+      if (GetPixelWriteMask(image,q) <= (QuantumRange/2))
+        {
+          q+=GetPixelChannels(image);
+          continue;
+        }
       GetPixelInfoPixel(image,q,&pixel);
       if (IsFuzzyEquivalencePixelInfo(&pixel,&conform_target) != invert)
-        SetPixelViaPixelInfo(image,&conform_fill,q);
+        {
+          PixelTrait
+            traits;
+
+          traits=GetPixelChannelTraits(image,RedPixelChannel);
+          if ((traits & UpdatePixelTrait) != 0)
+            SetPixelRed(image,conform_fill.red,q);
+          traits=GetPixelChannelTraits(image,GreenPixelChannel);
+          if ((traits & UpdatePixelTrait) != 0)
+            SetPixelGreen(image,conform_fill.green,q);
+          traits=GetPixelChannelTraits(image,BluePixelChannel);
+          if ((traits & UpdatePixelTrait) != 0)
+            SetPixelBlue(image,conform_fill.blue,q);
+          traits=GetPixelChannelTraits(image,BlackPixelChannel);
+          if ((traits & UpdatePixelTrait) != 0)
+            SetPixelBlack(image,conform_fill.black,q);
+          traits=GetPixelChannelTraits(image,AlphaPixelChannel);
+          if ((traits & UpdatePixelTrait) != 0)
+            SetPixelAlpha(image,conform_fill.alpha,q);
+        }
       q+=GetPixelChannels(image);
     }
     if (SyncCacheViewAuthenticPixels(image_view,exception) == MagickFalse)
@@ -1074,7 +1097,7 @@ MagickExport MagickBooleanType TransparentPaintImage(Image *image,
   image_view=AcquireAuthenticCacheView(image,exception);
 #if defined(MAGICKCORE_OPENMP_SUPPORT)
   #pragma omp parallel for schedule(static,4) shared(progress,status) \
-    magick_threads(image,image,image->rows,1)
+    magick_number_threads(image,image,image->rows,1)
 #endif
   for (y=0; y < (ssize_t) image->rows; y++)
   {
@@ -1098,6 +1121,11 @@ MagickExport MagickBooleanType TransparentPaintImage(Image *image,
     pixel=zero;
     for (x=0; x < (ssize_t) image->columns; x++)
     {
+      if (GetPixelWriteMask(image,q) <= (QuantumRange/2))
+        {
+          q+=GetPixelChannels(image);
+          continue;
+        }
       GetPixelInfoPixel(image,q,&pixel);
       if (IsFuzzyEquivalencePixelInfo(&pixel,target) != invert)
         SetPixelAlpha(image,opacity,q);
@@ -1201,7 +1229,7 @@ MagickExport MagickBooleanType TransparentPaintImageChroma(Image *image,
   image_view=AcquireAuthenticCacheView(image,exception);
 #if defined(MAGICKCORE_OPENMP_SUPPORT)
   #pragma omp parallel for schedule(static,4) shared(progress,status) \
-    magick_threads(image,image,image->rows,1)
+    magick_number_threads(image,image,image->rows,1)
 #endif
   for (y=0; y < (ssize_t) image->rows; y++)
   {
@@ -1228,6 +1256,11 @@ MagickExport MagickBooleanType TransparentPaintImageChroma(Image *image,
     GetPixelInfo(image,&pixel);
     for (x=0; x < (ssize_t) image->columns; x++)
     {
+      if (GetPixelWriteMask(image,q) <= (QuantumRange/2))
+        {
+          q+=GetPixelChannels(image);
+          continue;
+        }
       GetPixelInfoPixel(image,q,&pixel);
       match=((pixel.red >= low->red) && (pixel.red <= high->red) &&
         (pixel.green >= low->green) && (pixel.green <= high->green) &&

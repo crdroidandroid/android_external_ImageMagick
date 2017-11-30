@@ -17,13 +17,13 @@
 %                                 July 1992                                   %
 %                                                                             %
 %                                                                             %
-%  Copyright 1999-2016 ImageMagick Studio LLC, a non-profit organization      %
+%  Copyright 1999-2017 ImageMagick Studio LLC, a non-profit organization      %
 %  dedicated to making software imaging solutions freely available.           %
 %                                                                             %
 %  You may not use this file except in compliance with the License.  You may  %
 %  obtain a copy of the License at                                            %
 %                                                                             %
-%    http://www.imagemagick.org/script/license.php                            %
+%    https://www.imagemagick.org/script/license.php                           %
 %                                                                             %
 %  Unless required by applicable law or agreed to in writing, software        %
 %  distributed under the License is distributed on an "AS IS" BASIS,          %
@@ -424,19 +424,25 @@ static Image *ReadPDBImage(const ImageInfo *image_info,ExceptionInfo *exception)
     case 0:
     {
       image->compression=NoCompression;
-      count=(ssize_t) ReadBlob(image, packets * image -> rows, pixels);
+      count=(ssize_t) ReadBlob(image,packets*image->rows,pixels);
       break;
     }
     case 1:
     {
       image->compression=RLECompression;
-      if (!DecodeImage(image, pixels, packets * image -> rows))
-        ThrowReaderException( CorruptImageError, "RLEDecoderError" );
+      if (!DecodeImage(image,pixels,packets*image->rows))
+        {
+          pixels=(unsigned char *) RelinquishMagickMemory(pixels);
+          ThrowReaderException(CorruptImageError,"RLEDecoderError");
+        }
       break;
     }
     default:
+    {
+      pixels=(unsigned char *) RelinquishMagickMemory(pixels);
       ThrowReaderException(CorruptImageError,
-         "UnrecognizedImageCompressionType" );
+        "UnrecognizedImageCompressionType");
+    }
   }
   p=pixels;
   switch (bits_per_pixel)
@@ -541,7 +547,10 @@ static Image *ReadPDBImage(const ImageInfo *image_info,ExceptionInfo *exception)
       break;
     }
     default:
+    {
+      pixels=(unsigned char *) RelinquishMagickMemory(pixels);
       ThrowReaderException(CorruptImageError,"ImproperImageHeader");
+    }
   }
   pixels=(unsigned char *) RelinquishMagickMemory(pixels);
   if (EOFBlob(image) != MagickFalse)
@@ -562,7 +571,15 @@ static Image *ReadPDBImage(const ImageInfo *image_info,ExceptionInfo *exception)
         length;
 
       num_pad_bytes = (size_t) (comment_offset - TellBlob( image ));
-      while (num_pad_bytes--) ReadBlobByte( image );
+      while (num_pad_bytes-- != 0)
+      {
+        int
+          c;
+
+        c=ReadBlobByte(image);
+        if (c == EOF)
+          break;
+      }
 
       /*
         Read comment.
@@ -819,18 +836,24 @@ static MagickBooleanType WritePDBImage(const ImageInfo *image_info,Image *image,
     pdb_image.width=(short) (16*(image->columns/16+1));
   pdb_image.height=(short) image->rows;
   packets=((bits_per_pixel*image->columns+7)/8);
+  packet_size=(size_t) (image->depth > 8 ? 2 : 1);
   runlength=(unsigned char *) AcquireQuantumMemory(9UL*packets,
     image->rows*sizeof(*runlength));
-  if (runlength == (unsigned char *) NULL)
-    ThrowWriterException(ResourceLimitError,"MemoryAllocationFailed");
   buffer=(unsigned char *) AcquireQuantumMemory(512,sizeof(*buffer));
-  if (buffer == (unsigned char *) NULL)
-    ThrowWriterException(ResourceLimitError,"MemoryAllocationFailed");
-  packet_size=(size_t) (image->depth > 8 ? 2: 1);
   scanline=(unsigned char *) AcquireQuantumMemory(image->columns,packet_size*
     sizeof(*scanline));
-  if (scanline == (unsigned char *) NULL)
-    ThrowWriterException(ResourceLimitError,"MemoryAllocationFailed");
+  if ((runlength == (unsigned char *) NULL) ||
+      (buffer == (unsigned char *) NULL) ||
+      (scanline == (unsigned char *) NULL))
+    {
+      if (runlength != (unsigned char *) NULL)
+        runlength=(unsigned char *) RelinquishMagickMemory(runlength);
+      if (buffer != (unsigned char *) NULL)
+        buffer=(unsigned char *) RelinquishMagickMemory(buffer);
+      if (scanline != (unsigned char *) NULL)
+        scanline=(unsigned char *) RelinquishMagickMemory(scanline);
+      ThrowWriterException(ResourceLimitError,"MemoryAllocationFailed");
+    }
   if (IssRGBCompatibleColorspace(image->colorspace) == MagickFalse)
     (void) TransformImageColorspace(image,sRGBColorspace,exception);
   /*
@@ -839,6 +862,7 @@ static MagickBooleanType WritePDBImage(const ImageInfo *image_info,Image *image,
   quantum_info=AcquireQuantumInfo(image_info,image);
   if (quantum_info == (QuantumInfo *) NULL)
     ThrowWriterException(ResourceLimitError,"MemoryAllocationFailed");
+  status=SetQuantumDepth(image,quantum_info,image->depth > 8 ? 16 : 8);
   bits=8/(int) bits_per_pixel-1;  /* start at most significant bits */
   literal=0;
   repeat=0;

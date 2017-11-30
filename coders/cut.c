@@ -289,6 +289,15 @@ static int GetCutColors(Image *image,ExceptionInfo *exception)
 */
 static Image *ReadCUTImage(const ImageInfo *image_info,ExceptionInfo *exception)
 {
+#define ThrowCUTReaderException(severity,tag) \
+{ \
+  if (palette != NULL) \
+    palette=DestroyImage(palette); \
+  if (clone_info != NULL) \
+    clone_info=DestroyImageInfo(clone_info); \
+  ThrowReaderException(severity,tag); \
+}
+
   Image *image,*palette;
   ImageInfo *clone_info;
   MagickBooleanType status;
@@ -333,7 +342,7 @@ static Image *ReadCUTImage(const ImageInfo *image_info,ExceptionInfo *exception)
   Header.Reserved=ReadBlobLSBShort(image);
 
   if (Header.Width==0 || Header.Height==0 || Header.Reserved!=0)
-    CUT_KO:  ThrowReaderException(CorruptImageError,"ImproperImageHeader");
+    CUT_KO:  ThrowCUTReaderException(CorruptImageError,"ImproperImageHeader");
 
   /*---This code checks first line of image---*/
   EncodedByte=ReadBlobLSBShort(image);
@@ -346,7 +355,7 @@ static Image *ReadCUTImage(const ImageInfo *image_info,ExceptionInfo *exception)
       if((int) RunCount<0x80) i=(ssize_t) RunCountMasked;
       offset=SeekBlob(image,TellBlob(image)+i,SEEK_SET);
       if (offset < 0)
-        ThrowReaderException(CorruptImageError,"ImproperImageHeader");
+        ThrowCUTReaderException(CorruptImageError,"ImproperImageHeader");
       if(EOFBlob(image) != MagickFalse) goto CUT_KO;  /*wrong data*/
       EncodedByte-=i+1;
       ldblk+=(ssize_t) RunCountMasked;
@@ -371,7 +380,13 @@ static Image *ReadCUTImage(const ImageInfo *image_info,ExceptionInfo *exception)
   if (image_info->ping != MagickFalse) goto Finish;
   status=SetImageExtent(image,image->columns,image->rows,exception);
   if (status == MagickFalse)
-    return(DestroyImageList(image));
+    {
+      if (palette != NULL) 
+        palette=DestroyImage(palette); 
+      if (clone_info != NULL) 
+        clone_info=DestroyImageInfo(clone_info); 
+      return(DestroyImageList(image));
+    }
 
   /* ----- Do something with palette ----- */
   if ((clone_info=CloneImageInfo(image_info)) == NULL) goto NoPalette;
@@ -437,6 +452,8 @@ static Image *ReadCUTImage(const ImageInfo *image_info,ExceptionInfo *exception)
       PalHeader.MaxGreen=ReadBlobLSBShort(palette);
       PalHeader.MaxBlue=ReadBlobLSBShort(palette);
       (void) ReadBlob(palette,20,(unsigned char *) PalHeader.PaletteId);
+      if (EOFBlob(image))
+        ThrowCUTReaderException(CorruptImageError,"UnexpectedEndOfFile");
 
       if(PalHeader.MaxIndex<1) goto ErasePalette;
       image->colors=PalHeader.MaxIndex+1;
@@ -477,6 +494,8 @@ static Image *ReadCUTImage(const ImageInfo *image_info,ExceptionInfo *exception)
             }
 
         }
+      if (EOFBlob(image))
+        ThrowCUTReaderException(CorruptImageError,"UnexpectedEndOfFile");
     }
 
 
@@ -489,7 +508,7 @@ static Image *ReadCUTImage(const ImageInfo *image_info,ExceptionInfo *exception)
       if (AcquireImageColormap(image,image->colors,exception) == MagickFalse)
         {
         NoMemory:
-          ThrowReaderException(ResourceLimitError,"MemoryAllocationFailed");
+          ThrowCUTReaderException(ResourceLimitError,"MemoryAllocationFailed");
             }
 
       for (i=0; i < (ssize_t)image->colors; i++)
@@ -508,7 +527,14 @@ static Image *ReadCUTImage(const ImageInfo *image_info,ExceptionInfo *exception)
 
   offset=SeekBlob(image,6 /*sizeof(Header)*/,SEEK_SET);
   if (offset < 0)
-    ThrowReaderException(CorruptImageError,"ImproperImageHeader");
+    {
+      if (palette != NULL)
+        palette=DestroyImage(palette);
+      if (clone_info != NULL)
+        clone_info=DestroyImageInfo(clone_info);
+      BImgBuff=(unsigned char *) RelinquishMagickMemory(BImgBuff);
+      ThrowReaderException(CorruptImageError,"ImproperImageHeader");
+    }
   for (i=0; i < (int) Header.Height; i++)
   {
       EncodedByte=ReadBlobLSBShort(image);
@@ -576,6 +602,8 @@ static Image *ReadCUTImage(const ImageInfo *image_info,ExceptionInfo *exception)
               for (i=0; i < (ssize_t)image->rows; i++)
                 {
                   q=QueueAuthenticPixels(image,0,i,image->columns,1,exception);
+                  if (q == (Quantum *) NULL)
+                    break;
                   for (j=0; j < (ssize_t)image->columns; j++)
                     {
                       if (GetPixelRed(image,q) == ScaleCharToQuantum(1))
@@ -636,7 +664,7 @@ ModuleExport size_t RegisterCUTImage(void)
 
   entry=AcquireMagickInfo("CUT","CUT","DR Halo");
   entry->decoder=(DecodeImageHandler *) ReadCUTImage;
-  entry->flags|=CoderSeekableStreamFlag;
+  entry->flags|=CoderDecoderSeekableStreamFlag;
   (void) RegisterMagickInfo(entry);
   return(MagickImageCoderSignature);
 }

@@ -17,13 +17,13 @@
 %                                  July 1992                                  %
 %                                                                             %
 %                                                                             %
-%  Copyright 1999-2016 ImageMagick Studio LLC, a non-profit organization      %
+%  Copyright 1999-2017 ImageMagick Studio LLC, a non-profit organization      %
 %  dedicated to making software imaging solutions freely available.           %
 %                                                                             %
 %  You may not use this file except in compliance with the License.  You may  %
 %  obtain a copy of the License at                                            %
 %                                                                             %
-%    http://www.imagemagick.org/script/license.php                            %
+%    https://www.imagemagick.org/script/license.php                           %
 %                                                                             %
 %  Unless required by applicable law or agreed to in writing, software        %
 %  distributed under the License is distributed on an "AS IS" BASIS,          %
@@ -63,6 +63,7 @@
 #include "MagickCore/log.h"
 #include "MagickCore/magick.h"
 #include "MagickCore/memory_.h"
+#include "MagickCore/memory-private.h"
 #include "MagickCore/monitor.h"
 #include "MagickCore/nt-base-private.h"
 #include "MagickCore/option.h"
@@ -273,7 +274,6 @@ MagickExport void DestroyXResources(void)
   magick_windows[number_windows++]=(&windows->command);
   magick_windows[number_windows++]=(&windows->widget);
   magick_windows[number_windows++]=(&windows->popup);
-  magick_windows[number_windows++]=(&windows->context);
   for (i=0; i < (int) number_windows; i++)
   {
     if (magick_windows[i]->mapped != MagickFalse)
@@ -2160,20 +2160,12 @@ static void XDitherImage(Image *image,XImage *ximage,ExceptionInfo *exception)
   for (i=0; i < 2; i++)
     for (j=0; j < 16; j++)
     {
-      red_map[i][j]=(unsigned char *) AcquireQuantumMemory(256UL,
+      red_map[i][j]=(unsigned char *) AcquireCriticalMemory(256UL*
         sizeof(*red_map));
-      green_map[i][j]=(unsigned char *) AcquireQuantumMemory(256UL,
+      green_map[i][j]=(unsigned char *) AcquireCriticalMemory(256UL*
         sizeof(*green_map));
-      blue_map[i][j]=(unsigned char *) AcquireQuantumMemory(256UL,
+      blue_map[i][j]=(unsigned char *) AcquireCriticalMemory(256UL*
         sizeof(*blue_map));
-      if ((red_map[i][j] == (unsigned char *) NULL) ||
-          (green_map[i][j] == (unsigned char *) NULL) ||
-          (blue_map[i][j] == (unsigned char *) NULL))
-        {
-          ThrowXWindowException(ResourceLimitError,"MemoryAllocationFailed",
-            image->filename);
-          return;
-        }
     }
   /*
     Initialize dither tables.
@@ -3109,31 +3101,31 @@ MagickPrivate void XGetPixelInfo(Display *display,
   /*
     Set matte color.
   */
-  pixel->alpha_color=pixel->background_color;
-  if (resource_info->alpha_color != (char *) NULL)
+  pixel->matte_color=pixel->background_color;
+  if (resource_info->matte_color != (char *) NULL)
     {
       /*
         Matte color is specified as a X resource or command line argument.
       */
-      status=XParseColor(display,colormap,resource_info->alpha_color,
-        &pixel->alpha_color);
+      status=XParseColor(display,colormap,resource_info->matte_color,
+        &pixel->matte_color);
       if (status == False)
         ThrowXWindowException(XServerError,"ColorIsNotKnownToServer",
-          resource_info->alpha_color);
-      pixel->alpha_color.pixel=XStandardPixel(map_info,&pixel->alpha_color);
-      pixel->alpha_color.flags=(char) (DoRed | DoGreen | DoBlue);
+          resource_info->matte_color);
+      pixel->matte_color.pixel=XStandardPixel(map_info,&pixel->matte_color);
+      pixel->matte_color.flags=(char) (DoRed | DoGreen | DoBlue);
     }
   /*
     Set highlight color.
   */
   pixel->highlight_color.red=(unsigned short) (((double) 
-    pixel->alpha_color.red*ScaleQuantumToShort(HighlightModulate))/65535L+
+    pixel->matte_color.red*ScaleQuantumToShort(HighlightModulate))/65535L+
     (ScaleQuantumToShort((Quantum) (QuantumRange-HighlightModulate))));
   pixel->highlight_color.green=(unsigned short) (((double) 
-    pixel->alpha_color.green*ScaleQuantumToShort(HighlightModulate))/65535L+
+    pixel->matte_color.green*ScaleQuantumToShort(HighlightModulate))/65535L+
     (ScaleQuantumToShort((Quantum) (QuantumRange-HighlightModulate))));
   pixel->highlight_color.blue=(unsigned short) (((double) 
-    pixel->alpha_color.blue*ScaleQuantumToShort(HighlightModulate))/65535L+
+    pixel->matte_color.blue*ScaleQuantumToShort(HighlightModulate))/65535L+
     (ScaleQuantumToShort((Quantum) (QuantumRange-HighlightModulate))));
   pixel->highlight_color.pixel=XStandardPixel(map_info,&pixel->highlight_color);
   pixel->highlight_color.flags=(char) (DoRed | DoGreen | DoBlue);
@@ -3141,33 +3133,33 @@ MagickPrivate void XGetPixelInfo(Display *display,
     Set shadow color.
   */
   pixel->shadow_color.red=(unsigned short) (((double)
-    pixel->alpha_color.red*ScaleQuantumToShort(ShadowModulate))/65535L);
+    pixel->matte_color.red*ScaleQuantumToShort(ShadowModulate))/65535L);
   pixel->shadow_color.green=(unsigned short) (((double)
-    pixel->alpha_color.green*ScaleQuantumToShort(ShadowModulate))/65535L);
+    pixel->matte_color.green*ScaleQuantumToShort(ShadowModulate))/65535L);
   pixel->shadow_color.blue=(unsigned short) (((double)
-    pixel->alpha_color.blue*ScaleQuantumToShort(ShadowModulate))/65535L);
+    pixel->matte_color.blue*ScaleQuantumToShort(ShadowModulate))/65535L);
   pixel->shadow_color.pixel=XStandardPixel(map_info,&pixel->shadow_color);
   pixel->shadow_color.flags=(char) (DoRed | DoGreen | DoBlue);
   /*
     Set depth color.
   */
   pixel->depth_color.red=(unsigned short) (((double)
-    pixel->alpha_color.red*ScaleQuantumToShort(DepthModulate))/65535L);
+    pixel->matte_color.red*ScaleQuantumToShort(DepthModulate))/65535L);
   pixel->depth_color.green=(unsigned short) (((double)
-    pixel->alpha_color.green*ScaleQuantumToShort(DepthModulate))/65535L);
+    pixel->matte_color.green*ScaleQuantumToShort(DepthModulate))/65535L);
   pixel->depth_color.blue=(unsigned short) (((double)
-    pixel->alpha_color.blue*ScaleQuantumToShort(DepthModulate))/65535L);
+    pixel->matte_color.blue*ScaleQuantumToShort(DepthModulate))/65535L);
   pixel->depth_color.pixel=XStandardPixel(map_info,&pixel->depth_color);
   pixel->depth_color.flags=(char) (DoRed | DoGreen | DoBlue);
   /*
     Set trough color.
   */
   pixel->trough_color.red=(unsigned short) (((double)
-    pixel->alpha_color.red*ScaleQuantumToShort(TroughModulate))/65535L);
+    pixel->matte_color.red*ScaleQuantumToShort(TroughModulate))/65535L);
   pixel->trough_color.green=(unsigned short) (((double)
-    pixel->alpha_color.green*ScaleQuantumToShort(TroughModulate))/65535L);
+    pixel->matte_color.green*ScaleQuantumToShort(TroughModulate))/65535L);
   pixel->trough_color.blue=(unsigned short) (((double)
-    pixel->alpha_color.blue*ScaleQuantumToShort(TroughModulate))/65535L);
+    pixel->matte_color.blue*ScaleQuantumToShort(TroughModulate))/65535L);
   pixel->trough_color.pixel=XStandardPixel(map_info,&pixel->trough_color);
   pixel->trough_color.flags=(char) (DoRed | DoGreen | DoBlue);
   /*
@@ -3480,8 +3472,6 @@ MagickExport void XGetResourceInfo(const ImageInfo *image_info,
   resource_info->quantize_info=CloneQuantizeInfo((QuantizeInfo *) NULL);
   resource_info->close_server=MagickTrue;
   resource_info->client_name=AcquireString(client_name);
-  resource_info->alpha_color=XGetResourceInstance(database,client_name,
-    "alpha-color",(char *) NULL);
   resource_value=XGetResourceClass(database,client_name,"backdrop",
     (char *) "False");
   resource_info->backdrop=IsStringTrue(resource_value);
@@ -3572,6 +3562,8 @@ MagickExport void XGetResourceInfo(const ImageInfo *image_info,
   resource_info->magnify=(unsigned int) StringToUnsignedLong(resource_value);
   resource_info->map_type=XGetResourceClass(database,client_name,"map",
     (char *) NULL);
+  resource_info->matte_color=XGetResourceInstance(database,client_name,
+    "mattecolor",(char *) NULL);
   resource_info->name=ConstantString(XGetResourceClass(database,client_name,
     "name",(char *) NULL));
   resource_info->pen_colors[0]=XGetResourceClass(database,client_name,"pen1",
@@ -4623,7 +4615,7 @@ MagickPrivate void XGetWindowInfo(Display *display,XVisualInfo *visual_info,
           *segment_info;
 
         if (window->segment_info == (void *) NULL)
-          window->segment_info=AcquireQuantumMemory(2,sizeof(*segment_info));
+          window->segment_info=AcquireCriticalMemory(2*sizeof(*segment_info));
         segment_info=(XShmSegmentInfo *) window->segment_info;
         segment_info[0].shmid=(-1);
         segment_info[0].shmaddr=(char *) NULL;
@@ -7921,7 +7913,7 @@ MagickPrivate void XMakeStandardColormap(Display *display,
       (void) XAllocColor(display,colormap,&pixel->foreground_color);
       (void) XAllocColor(display,colormap,&pixel->background_color);
       (void) XAllocColor(display,colormap,&pixel->border_color);
-      (void) XAllocColor(display,colormap,&pixel->alpha_color);
+      (void) XAllocColor(display,colormap,&pixel->matte_color);
       (void) XAllocColor(display,colormap,&pixel->highlight_color);
       (void) XAllocColor(display,colormap,&pixel->shadow_color);
       (void) XAllocColor(display,colormap,&pixel->depth_color);
@@ -8256,7 +8248,7 @@ MagickPrivate void XMakeStandardColormap(Display *display,
       XBestPixel(display,colormap,colors,(unsigned int) number_colors,
         &pixel->border_color);
       XBestPixel(display,colormap,colors,(unsigned int) number_colors,
-        &pixel->alpha_color);
+        &pixel->matte_color);
       XBestPixel(display,colormap,colors,(unsigned int) number_colors,
         &pixel->highlight_color);
       XBestPixel(display,colormap,colors,(unsigned int) number_colors,

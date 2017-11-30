@@ -17,13 +17,13 @@
 %                                 July 1992                                   %
 %                                                                             %
 %                                                                             %
-%  Copyright 1999-2016 ImageMagick Studio LLC, a non-profit organization      %
+%  Copyright 1999-2017 ImageMagick Studio LLC, a non-profit organization      %
 %  dedicated to making software imaging solutions freely available.           %
 %                                                                             %
 %  You may not use this file except in compliance with the License.  You may  %
 %  obtain a copy of the License at                                            %
 %                                                                             %
-%    http://www.imagemagick.org/script/license.php                            %
+%    https://www.imagemagick.org/script/license.php                           %
 %                                                                             %
 %  Unless required by applicable law or agreed to in writing, software        %
 %  distributed under the License is distributed on an "AS IS" BASIS,          %
@@ -69,7 +69,7 @@
 /*
   Define declarations.
 */
-#if !defined(MAGICKCORE_WINDOWS_SUPPORT) || defined(__MINGW32__) || defined(__MINGW64__)
+#if !defined(MAGICKCORE_WINDOWS_SUPPORT) || defined(__MINGW32__)
 #define BI_RGB  0
 #define BI_RLE8  1
 #define BI_BITFIELDS  3
@@ -252,6 +252,9 @@ static Image *ReadICONImage(const ImageInfo *image_info,
   MagickBooleanType
     status;
 
+  MagickSizeType
+    extent;
+
   register ssize_t
     i,
     x;
@@ -296,6 +299,7 @@ static Image *ReadICONImage(const ImageInfo *image_info,
       ((icon_file.resource_type != 1) && (icon_file.resource_type != 2)) ||
       (icon_file.count > MaxIcons))
     ThrowReaderException(CorruptImageError,"ImproperImageHeader");
+  extent=0;
   for (i=0; i < icon_file.count; i++)
   {
     icon_file.directory[i].width=(unsigned char) ReadBlobByte(image);
@@ -309,8 +313,9 @@ static Image *ReadICONImage(const ImageInfo *image_info,
     icon_file.directory[i].offset=ReadBlobLSBLong(image);
     if (EOFBlob(image) != MagickFalse)
       break;
+    extent=MagickMax(extent,icon_file.directory[i].size);
   }
-  if (EOFBlob(image) != MagickFalse)
+  if ((EOFBlob(image) != MagickFalse) || (extent > GetBlobSize(image)))
     ThrowReaderException(CorruptImageError,"UnexpectedEndOfFile");
   one=1;
   for (i=0; i < icon_file.count; i++)
@@ -406,6 +411,8 @@ static Image *ReadICONImage(const ImageInfo *image_info,
         if (image->rows == 0)
           image->rows=256;
         image->depth=icon_info.bits_per_pixel;
+        if (image->depth > 16)
+          image->depth=8;
         if (image->debug != MagickFalse)
           {
             (void) LogMagickEvent(CoderEvent,GetMagickModule(),
@@ -427,7 +434,7 @@ static Image *ReadICONImage(const ImageInfo *image_info,
         {
           image->storage_class=PseudoClass;
           image->colors=icon_info.number_colors;
-          if (image->colors == 0)
+          if ((image->colors == 0) || (image->colors > 256))
             image->colors=one << icon_info.bits_per_pixel;
         }
       if (image->storage_class == PseudoClass)
@@ -450,8 +457,12 @@ static Image *ReadICONImage(const ImageInfo *image_info,
             ThrowReaderException(ResourceLimitError,"MemoryAllocationFailed");
           count=ReadBlob(image,(size_t) (4*image->colors),icon_colormap);
           if (count != (ssize_t) (4*image->colors))
-            ThrowReaderException(CorruptImageError,
-              "InsufficientImageDataInFile");
+            {
+              icon_colormap=(unsigned char *) RelinquishMagickMemory(
+                icon_colormap);
+              ThrowReaderException(CorruptImageError,
+                "InsufficientImageDataInFile");
+            }
           p=icon_colormap;
           for (i=0; i < (ssize_t) image->colors; i++)
           {
@@ -772,18 +783,21 @@ ModuleExport size_t RegisterICONImage(void)
   entry->decoder=(DecodeImageHandler *) ReadICONImage;
   entry->encoder=(EncodeImageHandler *) WriteICONImage;
   entry->flags^=CoderAdjoinFlag;
-  entry->flags|=CoderSeekableStreamFlag;
+  entry->flags|=CoderDecoderSeekableStreamFlag;
+  entry->flags|=CoderEncoderSeekableStreamFlag;
   (void) RegisterMagickInfo(entry);
   entry=AcquireMagickInfo("ICON","ICO","Microsoft icon");
   entry->decoder=(DecodeImageHandler *) ReadICONImage;
   entry->encoder=(EncodeImageHandler *) WriteICONImage;
-  entry->flags|=CoderSeekableStreamFlag;
+  entry->flags|=CoderDecoderSeekableStreamFlag;
+  entry->flags|=CoderEncoderSeekableStreamFlag;
   (void) RegisterMagickInfo(entry);
   entry=AcquireMagickInfo("ICON","ICON","Microsoft icon");
   entry->decoder=(DecodeImageHandler *) ReadICONImage;
   entry->encoder=(EncodeImageHandler *) WriteICONImage;
   entry->flags^=CoderAdjoinFlag;
-  entry->flags|=CoderSeekableStreamFlag;
+  entry->flags|=CoderDecoderSeekableStreamFlag;
+  entry->flags|=CoderEncoderSeekableStreamFlag;
   (void) RegisterMagickInfo(entry);
   return(MagickImageCoderSignature);
 }
@@ -977,7 +991,8 @@ static MagickBooleanType WriteICONImage(const ImageInfo *image_info,
             return(MagickFalse);
           }
         write_info=CloneImageInfo(image_info);
-        (void) CopyMagickString(write_info->filename,"PNG:",MagickPathExtent);
+        (void) CopyMagickString(write_info->magick,"PNG",MagickPathExtent);
+        length=0;
 
         /* Don't write any ancillary chunks except for gAMA */
         (void) SetImageArtifact(write_image,"png:include-chunk","none,gama");

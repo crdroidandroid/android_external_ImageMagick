@@ -17,13 +17,13 @@
 %                                 July 1992                                   %
 %                                                                             %
 %                                                                             %
-%  Copyright 1999-2016 ImageMagick Studio LLC, a non-profit organization      %
+%  Copyright 1999-2017 ImageMagick Studio LLC, a non-profit organization      %
 %  dedicated to making software imaging solutions freely available.           %
 %                                                                             %
 %  You may not use this file except in compliance with the License.  You may  %
 %  obtain a copy of the License at                                            %
 %                                                                             %
-%    http://www.imagemagick.org/script/license.php                            %
+%    https://www.imagemagick.org/script/license.php                           %
 %                                                                             %
 %  Unless required by applicable law or agreed to in writing, software        %
 %  distributed under the License is distributed on an "AS IS" BASIS,          %
@@ -170,6 +170,7 @@ static Image *ReadPWPImage(const ImageInfo *image_info,ExceptionInfo *exception)
   status=OpenBlob(image_info,pwp_image,ReadBinaryBlobMode,exception);
   if (status == MagickFalse)
     return((Image *) NULL);
+  ResetMagickMemory(magick,0,sizeof(magick));
   count=ReadBlob(pwp_image,5,magick);
   if ((count != 5) || (LocaleNCompare((char *) magick,"SFW95",5) != 0))
     ThrowReaderException(CorruptImageError,"ImproperImageHeader");
@@ -215,6 +216,8 @@ static Image *ReadPWPImage(const ImageInfo *image_info,ExceptionInfo *exception)
     for (i=0; i < (ssize_t) filesize; i++)
     {
       c=ReadBlobByte(pwp_image);
+      if (c == EOF)
+        break;
       (void) fputc(c,file);
     }
     (void) fclose(file);
@@ -247,8 +250,6 @@ static Image *ReadPWPImage(const ImageInfo *image_info,ExceptionInfo *exception)
     (void) close(unique_file);
   (void) RelinquishUniqueFileResource(read_info->filename);
   read_info=DestroyImageInfo(read_info);
-  (void) CloseBlob(pwp_image);
-  pwp_image=DestroyImage(pwp_image);
   if (EOFBlob(image) != MagickFalse)
     {
       char
